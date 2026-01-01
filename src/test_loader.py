@@ -19,9 +19,9 @@ def test_md():
 def test_pdf():
     loader = PdfLoader()
     docs = loader.load(BASE_DIR / "data" / "test.pdf")
-    print(f"PDF loader OK, pages: {len(docs)}")
+    print(docs[0].content)
 
 if __name__ == "__main__":
-    # test_txt()
+    test_txt()
     test_md()
-    # test_pdf()
+    test_pdf()
