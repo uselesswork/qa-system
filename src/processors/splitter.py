@@ -51,6 +51,15 @@ class TextSplitter:
                 )
             )
 
+            if len(chunks) >= 2:
+                prev = chunks[-2]
+                curr = chunks[-1]
+
+                # 如果当前 chunk 没有引入任何新字符
+                if curr.metadata["char_end"] <= prev.metadata["char_end"]:
+                    chunks.pop()
+                    break
+
             chunk_id += 1
 
             # 4. 计算下一轮 start，确保单调递增

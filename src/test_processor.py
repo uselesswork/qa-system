@@ -55,5 +55,5 @@ def pdf_test():
 
 if __name__ == "__main__":
     # txt_test()
-    # md_test()
-    pdf_test()
+    md_test()
+    # pdf_test()
