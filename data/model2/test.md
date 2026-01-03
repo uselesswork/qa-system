@@ -1,0 +1,19 @@
+这是一个用于测试 Text Processor 的中英混合文本示例。
+
+本系统的目标是构建一个垂直领域的智能问答系统，支持文档加载、文本切分、向量检索以及基于大模型的回答生成。
+在实际应用中，文档内容往往比较长，如果不进行合理切分，会严重影响检索效果。
+
+The system supports multiple document formats, including PDF, Markdown, and TXT.
+Each document will be split into smaller chunks for embedding and retrieval.
+This process is commonly known as Retrieval-Augmented Generation (RAG).
+
+在 RAG 系统中，chunk size 是一个非常关键的参数。
+如果 chunk 太小，语义不完整；如果 chunk 太大，又会引入噪声。
+Therefore, choosing an appropriate chunk size is essential for good performance.
+
+本测试文本还包含一些较长的连续内容，用于触发基于字符长度的切分逻辑。
+我们希望验证在超过设定的 chunk_size（例如 500 字符）时，系统是否能够正确地进行切分，
+并且在切分时尽量保证语义完整性，而不是简单地在字符边界处强行截断。
+
+Finally, this paragraph is written entirely in English to ensure that the sentence-based splitting
+logic works correctly across different languages and punctuation styles.
