@@ -19,3 +19,6 @@ openai>=1.28.0
 # -----------------------------
 # python-dotenv 可选，用于管理 OPENAI_API_KEY
 python-dotenv>=1.0.0
+# LangChain / LangSmith（实验 & 观测层）
+langchain>=0.1.16
+langchain-openai>=0.0.6
