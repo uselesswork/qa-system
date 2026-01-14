@@ -1,4 +1,11 @@
 from pathlib import Path
+import asyncio
+import os
+from dotenv import load_dotenv
+
+# 加载 .env
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / "LangSmith.env")
 
 from src.loaders.txt_loader import TxtLoader
 from src.loaders.md_loader import MarkdownLoader
@@ -8,7 +15,6 @@ from src.processors.splitter import TextSplitter
 
 from src.embeddings.openai_embedding import OpenAIEmbedding
 
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 cleaner = TextCleaner()
 splitter = TextSplitter()
@@ -42,11 +48,11 @@ def pdf_test():
     return build_chunks_from_docs(docs)
 
 
-def embedding_test(chunks):
+async def embedding_test(chunks):
     print(f"Total chunks: {len(chunks)}")
 
     embedder = OpenAIEmbedding()
-    embedded_chunks = embedder.embed(chunks)
+    embedded_chunks = await embedder.embed(chunks)
 
     print(f"Embedded chunks: {len(embedded_chunks)}")
 
@@ -64,4 +70,4 @@ if __name__ == "__main__":
     # chunks = txt_test()
     # chunks = pdf_test()
 
-    embedding_test(chunks)
+    asyncio.run(embedding_test(chunks))
