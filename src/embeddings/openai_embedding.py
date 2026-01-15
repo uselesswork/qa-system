@@ -10,9 +10,9 @@ from .embedded_chunk import EmbeddedChunk
 
 class OpenAIEmbedding(BaseEmbeddingModel):
     def __init__(
-        self,
-        model_name: str = "text-embedding-3-small",
-        client: AsyncOpenAI | None = None,
+            self,
+            model_name: str = "text-embedding-3-small",
+            client: AsyncOpenAI | None = None,
     ):
         self.model_name = model_name
         self.client = client or AsyncOpenAI(
@@ -20,7 +20,7 @@ class OpenAIEmbedding(BaseEmbeddingModel):
         )
 
     async def embed(
-        self, chunks: List[TextChunk]
+            self, chunks: List[TextChunk]
     ) -> List[EmbeddedChunk]:
 
         if not chunks:
@@ -57,4 +57,24 @@ class OpenAIEmbedding(BaseEmbeddingModel):
                 )
             )
 
+        return results
+
+    # 新增实现
+    async def embed_texts(self, texts: List[str]):
+        response = await self.client.embeddings.create(
+            model=self.model,
+            input=texts,
+        )
+
+        results = []
+        for text, item in zip(texts, response.data):
+            results.append(
+                EmbeddedChunk(
+                    vector=np.array(item.embedding),
+                    metadata={
+                        "embedding_model": self.model,
+                        "embedding_dim": len(item.embedding),
+                    }
+                )
+            )
         return results

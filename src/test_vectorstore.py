@@ -16,7 +16,6 @@ from src.processors.splitter import TextSplitter
 from src.embeddings.openai_embedding import OpenAIEmbedding
 from src.vectorstores.memory_store import InMemoryVectorStore
 
-loader = MarkdownLoader()
 cleaner = TextCleaner()
 splitter = TextSplitter()
 

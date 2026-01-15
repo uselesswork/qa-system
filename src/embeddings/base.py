@@ -9,9 +9,29 @@ class BaseEmbeddingModel(ABC):
     # async 接口冻结，未来可无缝替换为本地模型 / 其他云模型
     @abstractmethod
     async def embed(
-        self, chunks: List[TextChunk]
+            self, chunks: List[TextChunk]
     ) -> List[EmbeddedChunk]:
         """
         将 TextChunk 批量转换为 EmbeddedChunk（异步）
+        """
+        pass
+
+# 新增接口
+class BaseEmbedding(ABC):
+
+    @abstractmethod
+    async def embed(
+            self,
+            chunks
+    ) -> List[EmbeddedChunk]:
+        pass
+
+    @abstractmethod
+    async def embed_texts(
+            self,
+            texts: List[str]
+    ) -> List[EmbeddedChunk]:
+        """
+        用于 query embedding
         """
         pass
