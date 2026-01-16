@@ -62,7 +62,7 @@ class OpenAIEmbedding(BaseEmbeddingModel):
     # 新增实现
     async def embed_texts(self, texts: List[str]):
         response = await self.client.embeddings.create(
-            model=self.model,
+            model=self.model_name,
             input=texts,
         )
 
@@ -72,7 +72,7 @@ class OpenAIEmbedding(BaseEmbeddingModel):
                 EmbeddedChunk(
                     vector=np.array(item.embedding),
                     metadata={
-                        "embedding_model": self.model,
+                        "embedding_model": self.model_name,
                         "embedding_dim": len(item.embedding),
                     }
                 )
