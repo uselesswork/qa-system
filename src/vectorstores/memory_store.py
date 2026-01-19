@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List
-from .base import VectorStore
+from .base import BaseVectorStore
 from .search_result import SearchResult
 from src.embeddings.embedded_chunk import EmbeddedChunk
 
@@ -9,7 +9,7 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-class InMemoryVectorStore(VectorStore):
+class InMemoryVectorStore(BaseVectorStore):
 
     def __init__(self):
         self._chunks: List[EmbeddedChunk] = []

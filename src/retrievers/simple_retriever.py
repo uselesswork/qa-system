@@ -1,6 +1,6 @@
 from typing import List
 from src.retrievers.base import BaseRetriever
-from src.vectorstores.base import VectorStore
+from src.vectorstores.base import BaseVectorStore
 from src.vectorstores.search_result import SearchResult
 from src.embeddings.base import BaseEmbedding
 
@@ -10,7 +10,7 @@ class SimpleRetriever(BaseRetriever):
     def __init__(
         self,
         embedder: BaseEmbedding,
-        vectorstore: VectorStore,
+        vectorstore: BaseVectorStore,
     ):
         self.embedder = embedder
         self.vectorstore = vectorstore

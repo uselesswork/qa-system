@@ -5,7 +5,7 @@ from .search_result import SearchResult
 from src.embeddings.embedded_chunk import EmbeddedChunk
 
 
-class VectorStore(ABC):
+class BaseVectorStore(ABC):
 
     @abstractmethod
     def add(self, chunks: List[EmbeddedChunk]) -> None:
