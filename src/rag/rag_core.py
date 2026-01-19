@@ -1,6 +1,17 @@
 import time
 from typing import List
-from langsmith import traceable
+
+# 添加条件导入以提高健壮性
+try:
+    from langsmith import traceable
+    LANGSMITH_AVAILABLE = True
+except ImportError:
+    LANGSMITH_AVAILABLE = False
+    # 创建一个空的装饰器作为替代
+    def traceable(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
 
 from src.embeddings.base import BaseEmbedding
 from src.vectorstores.base import BaseVectorStore
@@ -30,21 +41,6 @@ class RAGCore:
 
     @traceable(name="rag_answer")
     async def answer(self, query: str) -> RAGResult:
-
-        with traceable(name="retrieve"):
-            retrieved_chunks = await self.retriever.retrieve(
-                query=query,
-                top_k=self.top_k
-            )
-
-        with traceable(name="build_prompt"):
-            prompt = self.prompt_builder.build(
-                query=query,
-                chunks=retrieved_chunks
-            )
-
-        with traceable(name="llm_generate"):
-            llm_answer = await self.llm.generate(prompt)
 
         start_time = time.time()
 

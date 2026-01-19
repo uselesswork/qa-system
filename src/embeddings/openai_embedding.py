@@ -52,6 +52,7 @@ class OpenAIEmbedding(BaseEmbeddingModel):
 
             results.append(
                 EmbeddedChunk(
+                    content=chunk.content,
                     vector=vector,
                     metadata=metadata,
                 )
@@ -70,6 +71,7 @@ class OpenAIEmbedding(BaseEmbeddingModel):
         for text, item in zip(texts, response.data):
             results.append(
                 EmbeddedChunk(
+                    content=text, # 添加内容
                     vector=np.array(item.embedding),
                     metadata={
                         "embedding_model": self.model_name,
@@ -77,4 +79,5 @@ class OpenAIEmbedding(BaseEmbeddingModel):
                     }
                 )
             )
+
         return results

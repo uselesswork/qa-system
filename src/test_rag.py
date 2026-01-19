@@ -85,7 +85,12 @@ async def test_rag(chunks):
     print("----")
     print("Sources:")
     for s in result.sources:
-        print(s.metadata)
+        print("----")
+        print(f"Score: {s.score:.4f}")
+        print("Content:")
+        print(s.chunk.content)
+        print("Metadata:")
+        print(s.chunk.metadata)
 
 
 if __name__ == "__main__":
