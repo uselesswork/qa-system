@@ -42,7 +42,7 @@ def txt_test():
 
 def md_test():
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.md")
+    docs = loader.load(BASE_DIR / "data" / "model9" / "test.md")
     return build_chunks_from_docs(docs)
 
 
@@ -81,7 +81,8 @@ async def test_rag_compare(chunks,use_rerank: bool):
     )
 
     # 4. 问答
-    result = await rag.answer("什么是 RAG 系统？")
+    # result = await rag.answer("什么是 RAG 系统？")
+    result = await rag.answer("在 RAG 系统中，Reranking 的作用是什么？") # 修改问题
 
     print("Answer:")
     print(result.answer)

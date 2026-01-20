@@ -1,0 +1,27 @@
+## Chunk 1
+
+RAG, RAG, RAG, reranking, reranking, reranking.
+This paragraph mentions RAG and reranking many times.
+However, it does not explain what reranking does.
+It only repeats keywords without explanation.
+
+## Chunk 2
+
+在 RAG 系统中，Reranking、Retrieval、Embedding
+这些术语经常一起出现。
+但是这里依然没有解释 Reranking 的作用。
+
+## Chunk 3 （真正答案）
+
+Reranking 的作用是在初始向量召回之后，
+根据“query–chunk 的语义相关性”对候选结果重新排序，
+从而确保真正能回答问题的内容排在最前面。
+
+## Chunk 4
+
+This section discusses retrieval speed and latency.
+It is related to RAG systems but not to reranking purpose.
+
+## Chunk 5
+
+Cooking recipes, kitchen tools, and food preparation.
