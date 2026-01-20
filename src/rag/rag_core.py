@@ -30,6 +30,7 @@ class RAGCore:
         retriever: BaseRetriever,
         prompt_builder: BasePromptBuilder,
         llm: BaseLLM,
+        reranker=None, # 新增（可选）
         top_k: int = 5,
     ):
         self.embedder = embedder
@@ -37,6 +38,7 @@ class RAGCore:
         self.retriever = retriever
         self.prompt_builder = prompt_builder
         self.llm = llm
+        self.reranker = reranker # 新增（可选）
         self.top_k = top_k
 
     @traceable(name="rag_answer")
@@ -47,8 +49,19 @@ class RAGCore:
         # 1. 检索相关 chunks
         retrieved_chunks = await self.retriever.retrieve(
             query=query,
-            top_k=self.top_k
+            top_k=self.top_k * 2   # rerank 前多取
         )
+
+        # 2. Rerank（新增）
+        if self.reranker:
+            query_embedding = await self.retriever.embedder.embed_texts([query])
+            query_vector = query_embedding[0].vector
+
+            retrieved_chunks = self.reranker.rerank(
+                query_vector=query_vector,
+                results=retrieved_chunks,
+                top_k=self.top_k
+            )
 
         # 2. 构建 Prompt
         prompt = self.prompt_builder.build(
