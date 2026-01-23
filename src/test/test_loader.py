@@ -1,9 +1,10 @@
 from pathlib import Path
-from loaders.txt_loader import TxtLoader
-from loaders.md_loader import MarkdownLoader
-from loaders.pdf_loader import PdfLoader
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from src.loaders.md_loader import MarkdownLoader
+from src.loaders.pdf_loader import PdfLoader
+from src.loaders.txt_loader import TxtLoader
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 def test_txt():
     loader = TxtLoader()

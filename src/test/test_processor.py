@@ -5,7 +5,7 @@ from src.loaders.pdf_loader import PdfLoader
 from src.processors.cleaner import TextCleaner
 from src.processors.splitter import TextSplitter
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 cleaner = TextCleaner()
 splitter = TextSplitter()

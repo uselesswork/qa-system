@@ -1,20 +1,23 @@
-from pathlib import Path
 import asyncio
-import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# 加载 .env
-BASE_DIR = Path(__file__).resolve().parent.parent
+from src.loaders.pdf_loader import PdfLoader
+from src.loaders.txt_loader import TxtLoader
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / "LangSmith.env")
 
-from src.loaders.txt_loader import TxtLoader
 from src.loaders.md_loader import MarkdownLoader
-from src.loaders.pdf_loader import PdfLoader
 from src.processors.cleaner import TextCleaner
 from src.processors.splitter import TextSplitter
 
 from src.embeddings.openai_embedding import OpenAIEmbedding
-
+from src.vectorstores.memory_store import InMemoryVectorStore
+from src.retrievers.simple_retriever import SimpleRetriever
+from src.prompts.simple_prompt import SimplePromptBuilder
+from src.llms.openai_chat import OpenAIChatLLM
+from src.rag.rag_core import RAGCore
 
 cleaner = TextCleaner()
 splitter = TextSplitter()
@@ -48,21 +51,46 @@ def pdf_test():
     return build_chunks_from_docs(docs)
 
 
-async def embedding_test(chunks):
+async def test_rag(chunks):
+    # 1. 构建文档 chunks
     print(f"Total chunks: {len(chunks)}")
 
+    # 2. Embedding + VectorStore
     embedder = OpenAIEmbedding()
     embedded_chunks = await embedder.embed(chunks)
 
-    print(f"Embedded chunks: {len(embedded_chunks)}")
+    store = InMemoryVectorStore()
+    store.add(embedded_chunks)
 
-    for i, ec in enumerate(embedded_chunks):
+    retriever = SimpleRetriever(vectorstore=store, embedder=embedder)
+
+    # 3. Prompt + LLM
+    prompt_builder = SimplePromptBuilder()
+    llm = OpenAIChatLLM()
+
+    rag = RAGCore(
+        embedder=embedder,
+        vectorstore=store,
+        retriever=retriever,
+        prompt_builder=prompt_builder,
+        llm=llm,
+        top_k=3,
+    )
+
+    # 4. 问答
+    result = await rag.answer("什么是 RAG 系统？")
+
+    print("Answer:")
+    print(result.answer)
+    print("----")
+    print("Sources:")
+    for s in result.sources:
         print("----")
-        print(f"Chunk {i}")
-        print(f"Vector shape: {ec.vector.shape}")
+        print(f"Score: {s.score:.4f}")
+        print("Content:")
+        print(s.chunk.content)
         print("Metadata:")
-        for k, v in ec.metadata.items():
-            print(f"  {k}: {v}")
+        print(s.chunk.metadata)
 
 
 if __name__ == "__main__":
@@ -70,4 +98,4 @@ if __name__ == "__main__":
     # chunks = txt_test()
     # chunks = pdf_test()
 
-    asyncio.run(embedding_test(chunks))
+    asyncio.run(test_rag(chunks))

@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / "LangSmith.env")
 
 from src.llms.openai_chat import OpenAIChatLLM

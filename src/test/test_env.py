@@ -6,7 +6,7 @@ def main():
     print("pdfplumber version:", pdfplumber.__version__)
 
     # 简单文本测试
-    with open("../data/test.txt", "r", encoding="utf-8") as f:
+    with open("../../data/test.txt", "r", encoding="utf-8") as f:
         content = f.read()
         print(content)
 

@@ -1,20 +1,20 @@
 import asyncio
 from pathlib import Path
-
-import os
 from dotenv import load_dotenv
 
-# 加载 .env
-BASE_DIR = Path(__file__).resolve().parent.parent
+from src.loaders.pdf_loader import PdfLoader
+from src.loaders.txt_loader import TxtLoader
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / "LangSmith.env")
 
 from src.loaders.md_loader import MarkdownLoader
-from src.loaders.pdf_loader import PdfLoader
-from src.loaders.txt_loader import TxtLoader
 from src.processors.cleaner import TextCleaner
 from src.processors.splitter import TextSplitter
 from src.embeddings.openai_embedding import OpenAIEmbedding
 from src.vectorstores.memory_store import InMemoryVectorStore
+from src.retrievers.simple_retriever import SimpleRetriever
+
 
 cleaner = TextCleaner()
 splitter = TextSplitter()
@@ -47,7 +47,7 @@ def pdf_test():
     return build_chunks_from_docs(docs)
 
 
-async def test_vector_store(chunks):
+async def test_retriever(chunks):
     # 1. 文档 → chunks
     print(f"Chunks: {len(chunks)}")
 
@@ -59,11 +59,16 @@ async def test_vector_store(chunks):
     store = InMemoryVectorStore()
     store.add(embedded_chunks)
 
-    # 4. 用第一个 chunk 向量当 query
-    query_vector = embedded_chunks[0].vector
-    results = store.search(query_vector, top_k=3)
+    # 4. Retriever
+    retriever = SimpleRetriever(
+        embedder=embedder,
+        vectorstore=store
+    )
 
-    print(f"Search results: {len(results)}")
+    query = "什么是 RAG 系统？"
+    results = await retriever.retrieve(query, top_k=3)
+
+    print(f"Query: {query}")
     for r in results:
         print("----")
         print(f"Score: {r.score:.4f}")
@@ -75,4 +80,4 @@ if __name__ == "__main__":
     # chunks = txt_test()
     # chunks = pdf_test()
 
-    asyncio.run(test_vector_store(chunks))
+    asyncio.run(test_retriever(chunks))

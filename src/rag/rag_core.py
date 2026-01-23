@@ -31,6 +31,7 @@ class RAGCore:
         prompt_builder: BasePromptBuilder,
         llm: BaseLLM,
         reranker=None, # 新增（可选）
+        aggregator=None, # 新增（可选）
         top_k: int = 5,
     ):
         self.embedder = embedder
@@ -39,6 +40,7 @@ class RAGCore:
         self.prompt_builder = prompt_builder
         self.llm = llm
         self.reranker = reranker # 新增（可选）
+        self.aggregator = aggregator # 新增（可选）
         self.top_k = top_k
 
     @traceable(name="rag_answer")
@@ -63,13 +65,20 @@ class RAGCore:
                 top_k=self.top_k
             )
 
-        # 2. 构建 Prompt
+        # 3. Aggregator（新增）
+        if self.aggregator:
+            retrieved_chunks = self.aggregator.aggregate(
+                query=query,
+                results=retrieved_chunks
+            )
+
+        # 4. 构建 Prompt
         prompt = self.prompt_builder.build(
             query=query,
             chunks=retrieved_chunks
         )
 
-        # 3. LLM 生成回答
+        # 5. LLM 生成回答
         llm_answer = await self.llm.generate(prompt)
 
         elapsed = round(time.time() - start_time, 3)
