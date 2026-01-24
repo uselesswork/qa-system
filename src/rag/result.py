@@ -8,3 +8,4 @@ class RAGResult:
     answer: str
     sources: List[TextChunk]
     metadata: Dict[str, Any]
+    evidence_chunks: Dict[str, Any] = None # 新增

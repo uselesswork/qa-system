@@ -11,5 +11,9 @@ class BaseAnswerAggregator(ABC):
         self,
         query: str,
         results: List[SearchResult]
-    ) -> AggregatedAnswer:
+    ) -> List[SearchResult]:
+        """
+        对检索到的 chunks 进行聚合 / 高亮 / 合并
+        返回仍然是 SearchResult 列表
+        """
         pass

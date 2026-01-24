@@ -78,8 +78,6 @@ async def run_test(use_aggregator: bool):
     # Aggregator（关键差异）
     aggregator = (
         AnswerAggregator(
-            llm=llm,
-            prompt_builder=prompt_builder,
             max_chunks=3
         )
         if use_aggregator

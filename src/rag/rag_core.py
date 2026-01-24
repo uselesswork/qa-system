@@ -7,7 +7,7 @@ try:
     LANGSMITH_AVAILABLE = True
 except ImportError:
     LANGSMITH_AVAILABLE = False
-    # 创建一个空的装饰器作为替代
+    # 创建一个空装饰器作为替代
     def traceable(*args, **kwargs):
         def decorator(func):
             return func
@@ -66,8 +66,9 @@ class RAGCore:
             )
 
         # 3. Aggregator（新增）
+        evidence_chunks = []
         if self.aggregator:
-            retrieved_chunks = self.aggregator.aggregate(
+            evidence_chunks = await self.aggregator.aggregate(
                 query=query,
                 results=retrieved_chunks
             )
@@ -86,6 +87,7 @@ class RAGCore:
         return RAGResult(
             answer=llm_answer.content,
             sources=retrieved_chunks,
+            evidence_chunks=evidence_chunks,  # 新增（模块11）
             metadata={
                 "latency": elapsed,
                 "top_k": self.top_k,
