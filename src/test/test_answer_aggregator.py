@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
+from src.aggregators.answer_aware_aggregator import AnswerAwareAggregator
 
 # ================== Path & Env ==================
 
@@ -26,7 +27,7 @@ from src.vectorstores.memory_store import InMemoryVectorStore
 
 from src.retrievers.simple_retriever import SimpleRetriever
 from src.rerankers.embedding_reranker import EmbeddingReranker
-from src.aggregators.answer_aggregator import AnswerAggregator
+from src.aggregators.simple_aggregator import AnswerAggregator
 
 # ================== Prompt / LLM / RAG ==================
 
@@ -77,8 +78,14 @@ async def run_test(use_aggregator: bool):
 
     # Aggregator（关键差异）
     aggregator = (
-        AnswerAggregator(
-            max_chunks=3
+        # AnswerAggregator(
+        #     max_chunks=3
+        # )
+        AnswerAwareAggregator(
+            llm=llm,
+            prompt_builder=prompt_builder,
+            embedder=embedder,
+            max_chunks=3,
         )
         if use_aggregator
         else None
@@ -131,7 +138,7 @@ async def run_test(use_aggregator: bool):
 # ================== Main ==================
 
 async def main():
-    await run_test(use_aggregator=False)
+    # await run_test(use_aggregator=False)
     await run_test(use_aggregator=True)
 
 
