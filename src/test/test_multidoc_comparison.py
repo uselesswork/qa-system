@@ -61,7 +61,7 @@ async def run_comparison(query: str):
         llm=llm,
         reranker=EmbeddingReranker(),
         aggregator=None,
-        top_k=3
+        top_k=5
     )
 
     result_embedding = await rag_embedding_only.answer(query)
@@ -84,7 +84,7 @@ async def run_comparison(query: str):
         llm=llm,
         prompt_builder=prompt_builder,
         embedder=embedder,
-        max_chunks=5
+        max_chunks=3
     )
 
     rag_answer_aware = RAGCore(
@@ -95,7 +95,7 @@ async def run_comparison(query: str):
         llm=llm,
         reranker=EmbeddingReranker(),
         aggregator=aggregator,
-        top_k=3
+        top_k=5
     )
 
     result_answer_aware = await rag_answer_aware.answer(query)
@@ -117,4 +117,4 @@ async def run_comparison(query: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(run_comparison("Reranking是什么"))
+    asyncio.run(run_comparison("为什么在对抗性文档中，embedding-only重排会失败，而answer-aware方法可以解决？"))
