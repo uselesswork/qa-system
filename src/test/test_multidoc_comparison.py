@@ -61,7 +61,7 @@ async def run_comparison(query: str):
         llm=llm,
         reranker=EmbeddingReranker(),
         aggregator=None,
-        top_k=5
+        top_k=3
     )
 
     result_embedding = await rag_embedding_only.answer(query)
@@ -95,7 +95,7 @@ async def run_comparison(query: str):
         llm=llm,
         reranker=EmbeddingReranker(),
         aggregator=aggregator,
-        top_k=5
+        top_k=3
     )
 
     result_answer_aware = await rag_answer_aware.answer(query)
@@ -106,14 +106,15 @@ async def run_comparison(query: str):
     print(result_answer_aware.answer)
     print("\n[Evidence]")
 
-    for e in result_answer_aware.sources:
+    for e in result_answer_aware.evidence_chunks:
         print("----")
-        print(f"Score: {e.score:.4f}")  # 直接从 SearchResult 获取
-        print(f"Source: {e.chunk.metadata.get('source')}")  # 从 chunk.metadata 获取
-        print(f"Chunk ID: {e.chunk.metadata.get('chunk_id')}")  # 从 chunk.metadata 获取
+        print(f"Rank: {e.rank}")
+        print(f"Score: {e.score:.4f}")
+        print(f"Source: {e.source}")
+        print(f"Chunk ID: {e.chunk_id}")
         print("Content:")
-        print(e.chunk.content)  # 从 chunk 获取内
+        print(e.content)
 
 
 if __name__ == "__main__":
-    asyncio.run(run_comparison("代码将开源在哪里"))
+    asyncio.run(run_comparison("Reranking是什么"))

@@ -138,7 +138,7 @@ async def run_test(use_aggregator: bool):
 # ================== Main ==================
 
 async def main():
-    # await run_test(use_aggregator=False)
+    await run_test(use_aggregator=False)
     await run_test(use_aggregator=True)
 
 

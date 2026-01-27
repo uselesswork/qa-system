@@ -1,15 +1,25 @@
-随着人工智能发展，Retrieval-Augmented Generation (RAG) 系统越来越受欢迎。RAG通过结合检索和生成，提高了问答系统的准确性。
+# Document 1: Adversarial Test
 
-然而，RAG系统面临诸多挑战。首先，文档切分(chunking)是关键。不合理的切分会导致语义不完整。其次，向量检索的效率也至关重要。我们需要高效的索引结构，比如Faiss。
+## Section 1: Keyword Bomb (大量干扰)
+RAG RAG RAG Retrieval Embedding Vector Chunk Chunk Chunk Reranking Rerank Rerank Rerank.
+These keywords are repeated many times. 这段只是堆砌关键词，embedding 分数高，但没有有效信息。
+Nothing here explains reranking.
+Even more repeated keywords: RAG, Rerank, Chunk, Embedding, Vector. 中文描述和英文关键词混杂，完全无关。
 
-跨语言处理是另一个难点。当文档中英文混杂时，传统的分词方法可能失效。我们需要更智能的句子边界检测。
+## Section 2: Misleading Explanation (看似合理但错误)
+In a RAG system, reranking is mainly used to speed up retrieval by skipping chunks.
+这段听起来合理，但实际上偏离真正答案。
+The explanation mentions caching vectors, keyword overlap, and skipping chunks, but gives no real insight.
 
-为了提高性能，我们提出了一种新方法。这种方法能够更好地处理跨文档的信息整合。具体来说，我们使用了注意力机制来融合不同文档的上下文。
+## Section 3: True Answer (低关键词密度)
+真正答案：在 RAG 系统中，Reranking 会在初始向量召回后，根据 query 重新排序 chunks。
+Answer-aware aggregator 会根据生成答案 embedding 对 chunks 再排序，即使 embedding 被干扰，也能识别真正答案。
+This section provides the correct reasoning behind Reranking: semantic relevance matters, not keyword density.
 
-实验结果表明，我们的方法在多个数据集上表现优异。在WikiHop数据集上，准确率达到了85%。在HotpotQA上，也有78%的表现。
+## Section 4: Extra Noise
+Cooking, recipes, kitchen tools, general instructions. 与 RAG 无关。
+Random unrelated English sentences mixed with Chinese phrases.
 
-然而，方法仍有局限。计算成本较高，且对长文本处理有限。未来，我们计划探索稀疏注意力机制来降低计算开销。
-
-此外，我们将研究如何扩展到更多应用场景，比如自动摘要和机器翻译。在接下来的章节中，我们将详细介绍模型架构。然后，展示实验结果。最后，提供代码实现。
-
-我们的代码将开
+## Section 5: Mixed Noise
+RAG, Rerank, Chunk, Embedding, Vector repeated multiple times. 完全无效信息。
+Short phrases, lists, random numbers: 12345, test, demo, chunking, retrieval.

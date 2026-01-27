@@ -1,27 +1,24 @@
-源在GitHub。请注意，这个项目还在不断改进中。最后，我们要讨论一些潜在的应用，比如智能客服和知识图谱构建。在智能客服中，RAG可以帮助快速找到答案。
+# Document 2: Adversarial Test
 
-在知识图谱构建中，RAG可以提取实体和关系。这些都需要系统能处理大规模文本。为了确保可靠性，我们需要大量测试。包括单元测试、集成测试和端到端测试。
+## Section 1: Keyword Explosion (超高 embedding 分数干扰)
+RAG Rerank RAG Retrieval Embedding Vector Chunk Chunk Chunk Rerank Rerank Rerank ... repeated 40+ times
+仅仅是关键词堆砌，没有提供答案。This part is misleading for embedding-only retrieval.
+These words are scattered across Chinese and English sentences to confuse the embedding.
 
-在测试中，我们特别关注多语言混合文档。我们构建了包含中英文的测试集。通过评估，我们的方法具有较好的鲁棒性。
+## Section 2: Fluent but Wrong Explanation (看似合理但错误)
+In a RAG system, reranking speeds up retrieval by skipping chunks based on keyword overlap.
+听起来合理，但实际上偏离真正答案。
+It also mentions caching embeddings and vector similarity tricks that do not explain true reranking.
 
-但我们也发现，专业术语多时性能下降。未来将引入领域自适应技术。总的来说，RAG系统将在信息检索领域发挥更大作用。
+## Section 3: True Answer (低关键词密度)
+真正答案：在 RAG 中，Reranking 确保真正相关的 chunks 排在前 K 个，提高回答质量。
+Answer-aware 可以根据生成答案 embedding 调整 chunk 排序，抵抗高 embedding 干扰。
+Even if a chunk has low keyword density, answer-aware scoring can elevate it to top-K.
 
-接下来，我们将介绍信息检索的基础概念。包括TF-IDF、BM25等传统方法。然后介绍基于神经网络的检索模型，比如DPR和ANCE。这些模型需要大量标注数据。
+## Section 4: Additional Noise
+Random paragraphs in Chinese and English, cooking instructions, kitchen tips. 无关内容。
+Short English sentences: "Data processing, chunking, embedding vectors, testing."
 
-预训练模型如BERT也被用于检索。但长文档编码开销大。一种方案是将文档切分为片段。这带来了如何切分的问题。我们的实验比较了不同切分策略。基于句子边界的切分比固定长度更有效。句子是基本单位，能保持语义完整。
-
-我们还尝试了添加重叠区域。相邻片段有部分重叠文本。这减少了上下文丢失。实验显示，重叠区域提高了召回率，但增加了计算成本。
-
-除了切分，索引检索也很重要。传统方法如Faiss可高效检索。但向量量大时仍会变慢。量化技术和图索引可提升速度。
-
-我们使用IVF-PQ索引。结合倒排索引和乘积量化。首先用k-means聚类向量。然后对每簇向量量化。检索时先找查询向量的簇。然后在该簇中计算相似度。这提升了检索速度。
-
-生成器通常是预训练模型，如GPT-3。我们采用多片段融合策略。从多个片段提取关键信息。组合成连贯段落再生成。这提高了答案质量。
-
-多片段融合的挑战是去除冗余信息。我们设计了基于注意力的融合模块。能自动选择重要信息。实验验证了其有效性。
-
-我们还引入了外部知识，如知识图谱。当问题涉及实体时，提取实体信息作为额外输入。这提升了准确性，但增加了复杂性。
-
-工程上，我们采用微服务架构。包括文档处理、检索、生成服务。每个服务可独立扩展。还有缓存机制减少重复计算。
-
-部署使用Docker和Kubernetes。压力测试
+## Section 5: Mixed Keyword Bomb
+RAG, Embedding, Vector, Chunk, Rerank repeated many times. 完全干扰信息。
+This section intentionally boosts embedding similarity without containing valid answer information.
