@@ -33,9 +33,9 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
         self.max_chunks = max_chunks
 
     async def aggregate(
-        self,
-        query: str,
-        results: List[SearchResult],
+            self,
+            query: str,
+            results: List[SearchResult],
     ) -> List[EvidenceChunk]:
 
         # ==========================================================
@@ -44,7 +44,7 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
 
         global_prompt = self.prompt_builder.build(
             query=query,
-            chunks=results,   # 🔥 不截断
+            chunks=results,  # 不截断
         )
 
         llm_answer = await self.llm.generate(global_prompt)
@@ -60,31 +60,52 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
         query_vec = embeddings[0].vector
         answer_vec = embeddings[1].vector
 
+        # ✅ 新增：所有 chunk embedding
+        chunk_vecs = [r.chunk.vector for r in results]
+
+        # ==========================================================
+        # Phase 3: 跨文档 Evidence 评分（关键改动）
+        # ==========================================================
+
         evidence_chunks: List[EvidenceChunk] = []
 
-        # ==========================================================
-        # Phase 3: 跨文档 Evidence 评分
-        # ==========================================================
+        # ✅ 新增：计算“答案-文档共识向量”
+        # 含义：哪些语义方向被多个 chunk 同时支持
+        consensus_scores = []
+        for v in chunk_vecs:
+            consensus_scores.append(cosine_similarity(answer_vec, v))
 
-        for r in results:
+        # 归一化，避免数值爆炸
+        max_consensus = max(consensus_scores) or 1.0
+        consensus_scores = [c / max_consensus for c in consensus_scores]
+
+        for idx, r in enumerate(results):
             chunk_vec = r.chunk.vector
             content = r.chunk.content
 
-            # 1️⃣ 与最终答案的一致性（最重要）
+            # 1️⃣ 与最终答案的一致性（局部）
             answer_sim = cosine_similarity(answer_vec, chunk_vec)
 
-            # 2️⃣ 与原始问题的相关性（防止跑题）
+            # 2️⃣ 与原始问题的相关性
             query_sim = cosine_similarity(query_vec, chunk_vec)
 
             # 3️⃣ 信息密度惩罚（keyword bomb 杀手）
-            token_count = max(len(content.split()), 1)
-            unique_ratio = len(set(content.split())) / token_count
+            tokens = content.split()
+            token_count = max(len(tokens), 1)
+            unique_ratio = len(set(tokens)) / token_count
             info_density = math.log(1 + token_count) * unique_ratio
 
+            # ======================================================
+            # ✅ 4️⃣ 跨文档“共识奖励”（真正拉开差距的地方）
+            # ======================================================
+
+            consensus_boost = consensus_scores[idx]
+
             final_score = (
-                0.5 * answer_sim +
-                0.3 * query_sim +
-                0.2 * info_density
+                    0.45 * answer_sim +
+                    0.25 * query_sim +
+                    0.15 * info_density +
+                    0.15 * consensus_boost  # 🔥 新增项
             )
 
             evidence_chunks.append(
@@ -109,3 +130,4 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             final_chunks.append(e)
 
         return final_chunks
+
