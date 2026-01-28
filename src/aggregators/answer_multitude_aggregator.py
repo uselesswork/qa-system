@@ -47,15 +47,15 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             chunks=results,  # 不截断
         )
 
-        llm_answer = await self.llm.generate(global_prompt)
-        answer_text = llm_answer.content
+        analysis_answer = await self.llm.generate(global_prompt)
+        analysis_text = analysis_answer.content
 
         # ==========================================================
         # Phase 2: 计算 embedding
         # ==========================================================
 
         embeddings = await self.embedder.embed_texts(
-            [query, answer_text]
+            [query, analysis_text]
         )
         query_vec = embeddings[0].vector
         answer_vec = embeddings[1].vector
@@ -69,15 +69,11 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
 
         evidence_chunks: List[EvidenceChunk] = []
 
-        # ✅ 新增：计算“答案-文档共识向量”
-        # 含义：哪些语义方向被多个 chunk 同时支持
-        consensus_scores = []
-        for v in chunk_vecs:
-            consensus_scores.append(cosine_similarity(answer_vec, v))
-
-        # 归一化，避免数值爆炸
-        max_consensus = max(consensus_scores) or 1.0
-        consensus_scores = [c / max_consensus for c in consensus_scores]
+        raw_consensus = [
+            cosine_similarity(answer_vec, v) for v in chunk_vecs
+        ]
+        max_c = max(raw_consensus) or 1.0
+        consensus_scores = [c / max_c for c in raw_consensus]
 
         for idx, r in enumerate(results):
             chunk_vec = r.chunk.vector

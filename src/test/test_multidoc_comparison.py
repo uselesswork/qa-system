@@ -8,6 +8,7 @@ from src.processors.cleaner import TextCleaner
 from src.processors.semantic.semantic_splitter import SemanticSplitter
 
 from src.embeddings.openai_embedding import OpenAIEmbedding
+from src.prompts.failure_aware_prompt_builder import FailureAwarePromptBuilder
 from src.vectorstores.memory_store import InMemoryVectorStore
 
 from src.retrievers.simple_retriever import SimpleRetriever
@@ -50,7 +51,7 @@ async def run_comparison(query: str):
 
     retriever = SimpleRetriever(embedder=embedder, vectorstore=store)
     llm = OpenAIChatLLM()
-    prompt_builder = SimplePromptBuilder()
+    prompt_builder = FailureAwarePromptBuilder()
 
     # ------------------ Embedding-only RAG ------------------
     rag_embedding_only = RAGCore(
@@ -80,6 +81,8 @@ async def run_comparison(query: str):
         print(s.chunk.content)
 
     # ------------------ Answer-aware RAG ------------------
+    prompt_builder = FailureAwarePromptBuilder()
+
     aggregator = AnswerAwareAggregator(
         llm=llm,
         prompt_builder=prompt_builder,
