@@ -121,7 +121,8 @@
 
     <textarea id="query" placeholder="Enter your research question..."></textarea>
     <br>
-    <button id="runBtn" onclick="ask()">Run Query</button>
+    <!--    <button id="runBtn" onclick="ask()">Run Query</button>-->
+    <button id="runBtn" onclick="askStream()">Run Query</button>
 
     <div id="result"></div>
 
@@ -195,6 +196,64 @@
             btn.innerText = "Run Query";
         }
     }
+
+    async function askStream() {
+        const query = document.getElementById("query").value;
+        const btn = document.getElementById("runBtn");
+        const resultDiv = document.getElementById("result");
+
+        btn.disabled = true;
+        btn.innerText = "Running…";
+        resultDiv.innerHTML = `<div class="answer" id="answer">⏳ Generating…</div>`;
+
+        const answerDiv = document.getElementById("answer");
+
+        const evtSource = new EventSource(`/ask/stream?query=${encodeURIComponent(query)}`);
+
+        var count = 0;
+
+        evtSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if(count === 0){
+                answerDiv.textContent = "";
+                count++;
+            }
+
+            if (data.answer_chunk) {
+                answerDiv.textContent += data.answer_chunk;
+            }
+
+            if (data.status === 'Done') {
+                btn.disabled = false;
+                btn.innerText = "Run Query";
+
+                // 渲染最终 evidence
+                if (data.evidence && data.evidence.length > 0) {
+                    let html = "<h3>Evidence Chunks:</h3>";
+                    data.evidence.forEach(ev => {
+                        html += `
+                        <div class="evidence">
+                            <strong>Rank ${ev.rank} | Score ${ev.score} | Source: ${ev.source} | Chunk ${ev.chunk_id}</strong>
+                            <pre>${ev.content}</pre>
+                        </div>`;
+                    });
+                    resultDiv.innerHTML += html;
+                }
+
+                evtSource.close();
+            }
+        };
+
+        evtSource.onerror = () => {
+            answerDiv.textContent = "❌ Stream failed";
+            btn.disabled = false;
+            btn.innerText = "Run Query";
+            evtSource.close();
+        };
+    }
+
+
 </script>
 
 </body>
