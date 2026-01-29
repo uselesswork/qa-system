@@ -66,9 +66,9 @@ class RAGCore:
             )
 
         # 3. Aggregator（新增）
-        evidence_chunks = []
+        aggregated = None
         if self.aggregator:
-            evidence_chunks = await self.aggregator.aggregate(
+            aggregated = await self.aggregator.aggregate(
                 query=query,
                 results=retrieved_chunks
             )
@@ -84,8 +84,15 @@ class RAGCore:
 
         elapsed = round(time.time() - start_time, 3)
 
+        if aggregated:
+            final_answer = aggregated.answer
+            evidence_chunks = aggregated.evidence_chunks
+        else:
+            final_answer = llm_answer.content
+            evidence_chunks = []
+
         return RAGResult(
-            answer=llm_answer.content,
+            answer=final_answer,
             sources=retrieved_chunks,
             evidence_chunks=evidence_chunks,  # 新增（模块11）
             metadata={
