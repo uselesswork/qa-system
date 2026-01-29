@@ -66,9 +66,9 @@ class RAGCore:
             )
 
         # 3. Aggregator（新增）
-        evidence_chunks = []
+        aggregated = None
         if self.aggregator:
-            evidence_chunks = await self.aggregator.aggregate(
+            aggregated = await self.aggregator.aggregate(
                 query=query,
                 results=retrieved_chunks
             )
@@ -84,8 +84,15 @@ class RAGCore:
 
         elapsed = round(time.time() - start_time, 3)
 
+        if aggregated:
+            final_answer = aggregated.answer
+            evidence_chunks = aggregated.evidence_chunks
+        else:
+            final_answer = llm_answer.content
+            evidence_chunks = []
+
         return RAGResult(
-            answer=llm_answer.content,
+            answer=final_answer,
             sources=retrieved_chunks,
             evidence_chunks=evidence_chunks,  # 新增（模块11）
             metadata={
@@ -94,3 +101,45 @@ class RAGCore:
                 "llm": llm_answer.metadata,
             }
         )
+
+    @traceable(name="rag_answer_stream")
+    async def stream_answer(self, query: str):
+        """
+        返回 async generator，每次 yield 增量文本
+        """
+        # 1. 检索相关 chunks
+        retrieved_chunks = await self.retriever.retrieve(
+            query=query,
+            top_k=self.top_k * 2
+        )
+
+        # 2. Rerank
+        if self.reranker:
+            query_embedding = await self.retriever.embedder.embed_texts([query])
+            query_vector = query_embedding[0].vector
+
+            retrieved_chunks = self.reranker.rerank(
+                query_vector=query_vector,
+                results=retrieved_chunks,
+                top_k=self.top_k
+            )
+
+        # 3. Aggregator
+        aggregated = None
+        if self.aggregator:
+            aggregated = await self.aggregator.aggregate(
+                query=query,
+                results=retrieved_chunks
+            )
+
+        # 4. 构建 Prompt
+        prompt = self.prompt_builder.build(
+            query=query,
+            chunks=retrieved_chunks
+        )
+
+        # 5. LLM 流式生成
+        async for chunk in self.llm.stream_generate(prompt):
+            yield chunk  # 逐步返回文本
+
+        # ⚠️ 注意：这里不返回最终 RAGResult，如果前端需要 Evidence / metadata，需要再调用 answer()

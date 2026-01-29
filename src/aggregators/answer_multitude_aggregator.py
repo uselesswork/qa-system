@@ -2,7 +2,7 @@ from typing import List
 import math
 
 from src.aggregators.base import BaseAnswerAggregator
-from src.aggregators.schemas import EvidenceChunk
+from src.aggregators.schemas import EvidenceChunk, AggregatedAnswer
 from src.vectorstores.search_result import SearchResult
 from src.embeddings.openai_embedding import OpenAIEmbedding
 from src.llms.openai_chat import OpenAIChatLLM
@@ -36,7 +36,7 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             self,
             query: str,
             results: List[SearchResult],
-    ) -> List[EvidenceChunk]:
+    ) -> AggregatedAnswer:
 
         # ==========================================================
         # Phase 1: 用【全部 chunks】生成一个“全局答案”
@@ -125,5 +125,8 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             e.rank = i + 1
             final_chunks.append(e)
 
-        return final_chunks
+        return AggregatedAnswer(
+            answer=analysis_text,       # 全局答案
+            evidence_chunks=final_chunks
+        )
 
