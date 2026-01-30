@@ -54,31 +54,31 @@ async def run_comparison(query: str):
     prompt_builder = FailureAwarePromptBuilder()
 
     # ------------------ Embedding-only RAG ------------------
-    # rag_embedding_only = RAGCore(
-    #     embedder=embedder,
-    #     vectorstore=store,
-    #     retriever=retriever,
-    #     prompt_builder=prompt_builder,
-    #     llm=llm,
-    #     reranker=EmbeddingReranker(),
-    #     aggregator=None,
-    #     top_k=5
-    # )
-    #
-    # result_embedding = await rag_embedding_only.answer(query)
-    #
-    # print("\n==============================")
-    # print("[Embedding-only top-K]")
-    # print("\n[Answer]")
-    # print(result_embedding.answer)
-    # print("\n[Evidence]")
-    # for s in result_embedding.sources:
-    #     print("----")
-    #     print(f"Score: {s.score:.4f}")
-    #     print(f"Source: {s.chunk.metadata.get('source')}")
-    #     print(f"Chunk ID: {s.chunk.metadata.get('chunk_id')}")
-    #     print("Content:")
-    #     print(s.chunk.content)
+    rag_embedding_only = RAGCore(
+        embedder=embedder,
+        vectorstore=store,
+        retriever=retriever,
+        prompt_builder=prompt_builder,
+        llm=llm,
+        reranker=EmbeddingReranker(),
+        aggregator=None,
+        top_k=5
+    )
+
+    result_embedding = await rag_embedding_only.answer(query)
+
+    print("\n==============================")
+    print("[Embedding-only top-K]")
+    print("\n[Answer]")
+    print(result_embedding.answer)
+    print("\n[Evidence]")
+    for s in result_embedding.sources:
+        print("----")
+        print(f"Score: {s.score:.4f}")
+        print(f"Source: {s.chunk.metadata.get('source')}")
+        print(f"Chunk ID: {s.chunk.metadata.get('chunk_id')}")
+        print("Content:")
+        print(s.chunk.content)
 
     # ------------------ Answer-aware RAG ------------------
     prompt_builder = FailureAwarePromptBuilder()
