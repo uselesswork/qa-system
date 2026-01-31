@@ -87,7 +87,7 @@ async def run_comparison(query: str):
         llm=llm,
         prompt_builder=prompt_builder,
         embedder=embedder,
-        max_chunks=3
+        max_chunks=5
     )
 
     rag_answer_aware = RAGCore(
@@ -120,4 +120,4 @@ async def run_comparison(query: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(run_comparison("为什么在对抗性文档中，embedding-only重排会失败，而answer-aware方法可以解决？"))
+    asyncio.run(run_comparison("根据文档6的详细解释，对比传统重排和answer-aware重排在对抗性环境下的表现差异"))
