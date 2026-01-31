@@ -1,5 +1,5 @@
 import time
-from typing import List
+import asyncio
 
 # 添加条件导入以提高健壮性
 try:
@@ -132,14 +132,24 @@ class RAGCore:
                 results=retrieved_chunks
             )
 
-        # 4. 构建 Prompt
-        prompt = self.prompt_builder.build(
-            query=query,
-            chunks=retrieved_chunks
-        )
+        # 4. 根据是否有聚合器决定生成方式
+        if aggregated:
+            # 流式返回聚合器生成的答案
+            answer_text = aggregated.answer
+            # 按字符流式返回
+            for char in answer_text:
+                yield char
+                await asyncio.sleep(0.03)
+        else:
+            # 如果没有聚合器，使用原来流式生成方式
+            # 构建 Prompt
+            prompt = self.prompt_builder.build(
+                query=query,
+                chunks=retrieved_chunks
+            )
 
-        # 5. LLM 流式生成
-        async for chunk in self.llm.stream_generate(prompt):
-            yield chunk  # 逐步返回文本
+            # LLM 流式生成
+            async for chunk in self.llm.stream_generate(prompt):
+                yield chunk  # 逐步返回文本
 
         # ⚠️ 注意：这里不返回最终 RAGResult，如果前端需要 Evidence / metadata，需要再调用 answer()
