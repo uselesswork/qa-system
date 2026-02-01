@@ -21,20 +21,39 @@ class LLMQueryRewriter(BaseQueryRewriter):
         )
 
         prompt = f"""
-            你是一个 RAG 查询重写器。
-            根据对话历史，将用户问题改写为**独立、完整、可用于文档检索的问题**。
-            不要回答问题。
+            你是一个多轮 RAG 系统中的 Query Rewriter。
+
+            系统目标：
+            - 用户的问题是递进的
+            - 你需要基于“对话历史”，判断当前问题处于什么阶段
+            - 只生成【检索新增信息】所需的 query
+            - 避免重复检索已解释的基础概念
             
-            对话历史：
-            {history_text}
+            对话历史（按时间顺序）：
+            {history}
             
-            用户当前问题：
+            当前用户问题：
             {query}
             
-            重写后的检索问题：
+            请遵循以下规则生成检索 query：
+            1. 如果是第一轮：生成“定义 / 原理”型检索 query
+            2. 如果是追问失败 / 局限：生成“失败机制 / 对抗性情况”型检索 query
+            3. 如果是方法对比：生成“对比 / 解决机制”型检索 query
+            4. 不要复述用户问题
+            5. 不要给出答案，只输出一条检索 query
+            
+            输出格式（严格）：
+            <REWRITTEN_QUERY>
         """
-        resp = await self.llm.generate(prompt)
-        return resp.content.strip()
+
+        result = await self.llm.generate(prompt)
+        rewritten = result.content.strip()
+
+        # 防御：空 rewrite 就 fallback
+        if not rewritten:
+            return query
+
+        return rewritten
 
 class ChatService:
 
