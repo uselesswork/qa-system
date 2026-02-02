@@ -1,6 +1,8 @@
 import time
 import asyncio
 
+from ..rerankers.answer_aware_reranker import AnswerAwareReranker
+
 # 添加条件导入以提高健壮性
 try:
     from langsmith import traceable
@@ -30,18 +32,20 @@ class RAGCore:
         retriever: BaseRetriever,
         prompt_builder: BasePromptBuilder,
         llm: BaseLLM,
-        reranker=None, # 新增（可选）
-        aggregator=None, # 新增（可选）
+        reranker=None,
+        aggregator=None,
         top_k: int = 5,
+        enable_answer_aware: bool = False
     ):
         self.embedder = embedder
         self.vectorstore = vectorstore
         self.retriever = retriever
         self.prompt_builder = prompt_builder
         self.llm = llm
-        self.reranker = reranker # 新增（可选）
-        self.aggregator = aggregator # 新增（可选）
+        self.reranker = reranker
+        self.aggregator = aggregator
         self.top_k = top_k
+        self.enable_answer_aware = enable_answer_aware
 
     @traceable(name="rag_answer")
     async def answer(self, query: str) -> RAGResult:
@@ -54,7 +58,9 @@ class RAGCore:
             top_k=self.top_k * 2   # rerank 前多取
         )
 
-        # 2. Rerank（新增）
+        query_vector=None
+
+        # 2. embedding rerank（粗排）
         if self.reranker:
             query_embedding = await self.retriever.embedder.embed_texts([query])
             query_vector = query_embedding[0].vector
@@ -65,7 +71,34 @@ class RAGCore:
                 top_k=self.top_k
             )
 
-        # 3. Aggregator（新增）
+
+        # 3. Answer-aware rerank（细排）
+        if self.enable_answer_aware:
+            draft_prompt = self.prompt_builder.build(
+                query=query,
+                chunks=retrieved_chunks
+            )
+
+            draft_answer = await self.llm.generate(draft_prompt)
+
+            answer_reranker=AnswerAwareReranker(
+                llm=self.llm,
+                query_text=query,
+                draft_answer=draft_answer.content
+            )
+
+            print(f"Before answer-aware rerank: {[r.score for r in retrieved_chunks[:3]]}")
+
+            retrieved_chunks = await answer_reranker.rerank(
+                query_vector=query_vector,
+                results=retrieved_chunks,
+                top_k=self.top_k,
+            )
+
+            print(f"After answer-aware rerank: {[r.score for r in retrieved_chunks[:3]]}")
+
+
+        # 4. Aggregator（新增）
         aggregated = None
         if self.aggregator:
             aggregated = await self.aggregator.aggregate(
@@ -73,13 +106,13 @@ class RAGCore:
                 results=retrieved_chunks
             )
 
-        # 4. 构建 Prompt
+        # 5. 构建 Prompt
         prompt = self.prompt_builder.build(
             query=query,
             chunks=retrieved_chunks
         )
 
-        # 5. LLM 生成回答
+        # 6. LLM 生成回答
         llm_answer = await self.llm.generate(prompt)
 
         elapsed = round(time.time() - start_time, 3)

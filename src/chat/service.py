@@ -30,7 +30,7 @@ class LLMQueryRewriter(BaseQueryRewriter):
             - 避免重复检索已解释的基础概念
             
             对话历史（按时间顺序）：
-            {history}
+            {history_text}
             
             当前用户问题：
             {query}

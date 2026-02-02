@@ -72,7 +72,8 @@ async def build_chat_service():
         llm=llm,
         reranker=EmbeddingReranker(),
         aggregator=aggregator,
-        top_k=5
+        top_k=5,
+        enable_answer_aware=True    # 插入新reranker
     )
 
     memory = ChatMemory(max_turns=10)
