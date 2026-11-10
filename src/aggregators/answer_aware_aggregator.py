@@ -1,7 +1,7 @@
 from typing import List
 
 from src.aggregators.base import BaseAnswerAggregator
-from src.aggregators.schemas import EvidenceChunk
+from src.aggregators.schemas import AggregatedAnswer, EvidenceChunk
 from src.vectorstores.search_result import SearchResult
 from src.embeddings.openai_embedding import OpenAIEmbedding
 from src.llms.openai_chat import OpenAIChatLLM
@@ -31,10 +31,7 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
         self,
         query: str,
         results: List[SearchResult],
-    ) -> List[EvidenceChunk]:
-        """
-        注意：这里返回的是 EvidenceChunk，不再是 SearchResult
-        """
+    ) -> AggregatedAnswer:
 
         # 1. 先生成最终答案（这是“答案感知”的关键）
         prompt = self.prompt_builder.build(
@@ -74,4 +71,4 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             e.rank = i + 1
             final_chunks.append(e)
 
-        return final_chunks
+        return AggregatedAnswer(answer=answer_text, evidence_chunks=final_chunks)

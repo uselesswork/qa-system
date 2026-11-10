@@ -1,30 +1,27 @@
 import time
-import asyncio
+from typing import AsyncIterator
 
-from ..rerankers.answer_aware_reranker import AnswerAwareReranker
+from src.aggregators.base import BaseAnswerAggregator
+from src.embeddings.base import BaseEmbedding
+from src.llms.base import BaseLLM
+from src.prompts.base import BasePromptBuilder
+from src.rerankers.answer_aware_reranker import AnswerAwareReranker
+from src.retrievers.base import BaseRetriever
+from src.vectorstores.base import BaseVectorStore
+from src.vectorstores.search_result import SearchResult
 
-# 添加条件导入以提高健壮性
+from .result import RAGResult, RAGStreamEvent
+
 try:
     from langsmith import traceable
-    LANGSMITH_AVAILABLE = True
 except ImportError:
-    LANGSMITH_AVAILABLE = False
-    # 创建一个空装饰器作为替代
     def traceable(*args, **kwargs):
         def decorator(func):
             return func
         return decorator
 
-from src.embeddings.base import BaseEmbedding
-from src.vectorstores.base import BaseVectorStore
-from src.retrievers.base import BaseRetriever
-from src.prompts.base import BasePromptBuilder
-from src.llms.base import BaseLLM
-from .result import RAGResult
-
 
 class RAGCore:
-
     def __init__(
         self,
         embedder: BaseEmbedding,
@@ -33,9 +30,9 @@ class RAGCore:
         prompt_builder: BasePromptBuilder,
         llm: BaseLLM,
         reranker=None,
-        aggregator=None,
+        aggregator: BaseAnswerAggregator | None = None,
         top_k: int = 5,
-        enable_answer_aware: bool = False
+        enable_answer_aware: bool = False,
     ):
         self.embedder = embedder
         self.vectorstore = vectorstore
@@ -47,142 +44,94 @@ class RAGCore:
         self.top_k = top_k
         self.enable_answer_aware = enable_answer_aware
 
-    @traceable(name="rag_answer")
-    async def answer(self, query: str) -> RAGResult:
+    async def _retrieve(self, query: str) -> list[SearchResult]:
+        """普通问答与流式问答共用同一套召回和重排流程。"""
+        results = await self.retriever.retrieve(query=query, top_k=self.top_k * 2)
 
-        start_time = time.time()
-
-        # 1. 检索相关 chunks
-        retrieved_chunks = await self.retriever.retrieve(
-            query=query,
-            top_k=self.top_k * 2   # rerank 前多取
-        )
-
-        query_vector=None
-
-        # 2. embedding rerank（粗排）
         if self.reranker:
-            query_embedding = await self.retriever.embedder.embed_texts([query])
-            query_vector = query_embedding[0].vector
-
-            retrieved_chunks = self.reranker.rerank(
-                query_vector=query_vector,
-                results=retrieved_chunks,
-                top_k=self.top_k
-            )
-
-
-        # 3. Answer-aware rerank（细排）
-        if self.enable_answer_aware:
-            draft_prompt = self.prompt_builder.build(
-                query=query,
-                chunks=retrieved_chunks
-            )
-
-            draft_answer = await self.llm.generate(draft_prompt)
-
-            answer_reranker=AnswerAwareReranker(
-                llm=self.llm,
-                query_text=query,
-                draft_answer=draft_answer.content
-            )
-
-            print(f"Before answer-aware rerank: {[r.score for r in retrieved_chunks[:3]]}")
-
-            retrieved_chunks = await answer_reranker.rerank(
-                query_vector=query_vector,
-                results=retrieved_chunks,
+            query_embedding = await self.embedder.embed_texts([query])
+            results = self.reranker.rerank(
+                query_vector=query_embedding[0].vector,
+                results=results,
                 top_k=self.top_k,
             )
 
-            print(f"After answer-aware rerank: {[r.score for r in retrieved_chunks[:3]]}")
-
-
-        # 4. Aggregator（新增）
-        aggregated = None
-        if self.aggregator:
-            aggregated = await self.aggregator.aggregate(
-                query=query,
-                results=retrieved_chunks
+        if self.enable_answer_aware:
+            draft_prompt = self.prompt_builder.build(query=query, chunks=results)
+            draft_answer = await self.llm.generate(draft_prompt)
+            answer_reranker = AnswerAwareReranker(
+                llm=self.llm,
+                query_text=query,
+                draft_answer=draft_answer.content,
+            )
+            results = await answer_reranker.rerank(
+                query_vector=None,
+                results=results,
+                top_k=self.top_k,
             )
 
-        # 5. 构建 Prompt
-        prompt = self.prompt_builder.build(
-            query=query,
-            chunks=retrieved_chunks
+        return results
+
+    def _result(self, answer, sources, evidence, started, llm_metadata=None):
+        return RAGResult(
+            answer=answer,
+            sources=sources,
+            evidence_chunks=evidence,
+            metadata={
+                "latency": round(time.perf_counter() - started, 3),
+                "top_k": self.top_k,
+                "llm": llm_metadata or {},
+            },
         )
 
-        # 6. LLM 生成回答
+    @traceable(name="rag_answer")
+    async def answer(self, query: str) -> RAGResult:
+        started = time.perf_counter()
+        results = await self._retrieve(query)
+
+        if self.aggregator:
+            aggregated = await self.aggregator.aggregate(query=query, results=results)
+            return self._result(
+                aggregated.answer, results, aggregated.evidence_chunks, started
+            )
+
+        prompt = self.prompt_builder.build(query=query, chunks=results)
         llm_answer = await self.llm.generate(prompt)
-
-        elapsed = round(time.time() - start_time, 3)
-
-        if aggregated:
-            final_answer = aggregated.answer
-            evidence_chunks = aggregated.evidence_chunks
-        else:
-            final_answer = llm_answer.content
-            evidence_chunks = []
-
-        return RAGResult(
-            answer=final_answer,
-            sources=retrieved_chunks,
-            evidence_chunks=evidence_chunks,  # 新增（模块11）
-            metadata={
-                "latency": elapsed,
-                "top_k": self.top_k,
-                "llm": llm_answer.metadata,
-            }
+        return self._result(
+            llm_answer.content, results, [], started, llm_answer.metadata
         )
 
     @traceable(name="rag_answer_stream")
-    async def stream_answer(self, query: str):
-        """
-        返回 async generator，每次 yield 增量文本
-        """
-        # 1. 检索相关 chunks
-        retrieved_chunks = await self.retriever.retrieve(
-            query=query,
-            top_k=self.top_k * 2
+    async def stream_answer_with_result(
+        self, query: str
+    ) -> AsyncIterator[RAGStreamEvent]:
+        """流式文本和最终证据来自同一次检索/生成，不再重复回答。"""
+        started = time.perf_counter()
+        results = await self._retrieve(query)
+
+        if self.aggregator:
+            aggregated = await self.aggregator.aggregate(query=query, results=results)
+            # 聚合器当前只提供完整答案；这里只分块输出，不假装模型实时生成。
+            for index in range(0, len(aggregated.answer), 64):
+                yield RAGStreamEvent(answer_chunk=aggregated.answer[index:index + 64])
+            yield RAGStreamEvent(
+                result=self._result(
+                    aggregated.answer, results, aggregated.evidence_chunks, started
+                )
+            )
+            return
+
+        prompt = self.prompt_builder.build(query=query, chunks=results)
+        answer_parts = []
+        async for chunk in self.llm.stream_generate(prompt):
+            answer_parts.append(chunk)
+            yield RAGStreamEvent(answer_chunk=chunk)
+        yield RAGStreamEvent(
+            result=self._result("".join(answer_parts), results, [], started)
         )
 
-        # 2. Rerank
-        if self.reranker:
-            query_embedding = await self.retriever.embedder.embed_texts([query])
-            query_vector = query_embedding[0].vector
-
-            retrieved_chunks = self.reranker.rerank(
-                query_vector=query_vector,
-                results=retrieved_chunks,
-                top_k=self.top_k
-            )
-
-        # 3. Aggregator
-        aggregated = None
-        if self.aggregator:
-            aggregated = await self.aggregator.aggregate(
-                query=query,
-                results=retrieved_chunks
-            )
-
-        # 4. 根据是否有聚合器决定生成方式
-        if aggregated:
-            # 流式返回聚合器生成的答案
-            answer_text = aggregated.answer
-            # 按字符流式返回
-            for char in answer_text:
-                yield char
-                await asyncio.sleep(0.03)
-        else:
-            # 如果没有聚合器，使用原来流式生成方式
-            # 构建 Prompt
-            prompt = self.prompt_builder.build(
-                query=query,
-                chunks=retrieved_chunks
-            )
-
-            # LLM 流式生成
-            async for chunk in self.llm.stream_generate(prompt):
-                yield chunk  # 逐步返回文本
-
-        # ⚠️ 注意：这里不返回最终 RAGResult，如果前端需要 Evidence / metadata，需要再调用 answer()
+    async def stream_answer(self, query: str) -> AsyncIterator[str]:
+        """保留原有纯文本流接口，供只关心答案文本的调用方使用。"""
+        async for event in self.stream_answer_with_result(query):
+            if event.answer_chunk is not None:
+                yield event.answer_chunk

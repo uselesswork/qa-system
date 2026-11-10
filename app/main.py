@@ -103,41 +103,40 @@ async def ask_stream(query: str):
     rag_core = app.state.rag_core
 
     async def event_generator():
-        # 逐步生成 answer
-        async for chunk in rag_core.stream_answer(query):
-            yield f"data: {json.dumps({'answer_chunk': chunk})}\n\n"
+        async for event in rag_core.stream_answer_with_result(query):
+            if event.answer_chunk is not None:
+                yield f"data: {json.dumps({'answer_chunk': event.answer_chunk}, ensure_ascii=False)}\n\n"
+                continue
+            result = event.result
 
-        # 最终获取 Evidence / metadata
-        result = await rag_core.answer(query)
+            # 最终事件直接使用本次生成的回答与证据。
+            evidence_list = []
+            for e in result.evidence_chunks:
+                evidence_item = {
+                    'rank': e.rank,
+                    'score': round(e.score, 4),
+                    'source': str(e.source),
+                    'chunk_id': e.chunk_id,
+                    'content': e.content
+                }
+                evidence_list.append(evidence_item)
 
-        # 构建证据列表，避免在f-string中使用多行表达式
-        evidence_list = []
-        for e in result.evidence_chunks:
-            evidence_item = {
-                'rank': e.rank,
-                'score': round(e.score, 4),
-                'source': str(e.source),
-                'chunk_id': e.chunk_id,
-                'content': e.content
+            # 处理 metadata 中可能包含的不可序列化对象。
+            metadata_serializable = {}
+            for key, value in result.metadata.items():
+                if isinstance(value, (Path, type(None))) or hasattr(value, '__fspath__'):
+                    metadata_serializable[key] = str(value)
+                else:
+                    metadata_serializable[key] = value
+
+            final_data = {
+                'status': 'Done',
+                'answer': result.answer,
+                'evidence': evidence_list,
+                'metadata': metadata_serializable
             }
-            evidence_list.append(evidence_item)
 
-        # 处理 metadata 中可能包含的不可序列化对象
-        metadata_serializable = {}
-        for key, value in result.metadata.items():
-            if isinstance(value, (Path, type(None))) or hasattr(value, '__fspath__'):
-                metadata_serializable[key] = str(value)
-            else:
-                metadata_serializable[key] = value
-
-        final_data = {
-            'status': 'Done',
-            'answer': result.answer,
-            'evidence': evidence_list,
-            'metadata': metadata_serializable
-        }
-
-        yield f"data: {json.dumps(final_data, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(final_data, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

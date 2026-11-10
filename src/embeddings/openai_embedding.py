@@ -4,11 +4,11 @@ from typing import List
 from openai import AsyncOpenAI
 
 from ..processors.chunk import TextChunk
-from .base import BaseEmbeddingModel
+from .base import BaseEmbedding
 from .embedded_chunk import EmbeddedChunk
 
 
-class OpenAIEmbedding(BaseEmbeddingModel):
+class OpenAIEmbedding(BaseEmbedding):
     def __init__(
             self,
             model_name: str = "text-embedding-3-small",

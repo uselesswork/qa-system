@@ -1,10 +1,10 @@
 from typing import List
-from src.aggregators.base import BaseAnswerAggregator
+from src.aggregators.base import BaseEvidenceAggregator
 from src.aggregators.schemas import EvidenceChunk
 from src.vectorstores.search_result import SearchResult
 
 
-class AnswerAggregator(BaseAnswerAggregator):
+class AnswerAggregator(BaseEvidenceAggregator):
 
     def __init__(self, max_chunks: int = 3):
         self.max_chunks = max_chunks

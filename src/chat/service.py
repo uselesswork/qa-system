@@ -74,20 +74,15 @@ class ChatService:
         # 2️⃣ rewrite（多轮 → 单轮）
         rewritten_query = await self.rewriter.rewrite(user_input, history)
 
-        # 3️⃣ 记录用户输入
         user_msg = ChatMessage(role="user", content=user_input)
-        self.memory.append(session_id, user_msg)
 
-        # 4️⃣ 核心：直接用你现在的 RAGCore
+        # 只有 RAG 成功后才写入完整的一轮对话。
         rag_result = await self.rag_core.answer(rewritten_query)
 
-        # 5️⃣ 记录 assistant
         assistant_msg = ChatMessage(
             role="assistant",
             content=rag_result.answer
         )
-        self.memory.append(session_id, assistant_msg)
-
         # 6️⃣ Evidence 结构化（支持 embedding-only / answer-aware）
         evidence = []
         for e in rag_result.evidence_chunks:
@@ -100,6 +95,8 @@ class ChatService:
                     content=e.content
                 )
             )
+
+        self.memory.append_turn(session_id, user_msg, assistant_msg)
 
         return ChatTurn(
             user_message=user_msg,

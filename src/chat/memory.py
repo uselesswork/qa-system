@@ -15,5 +15,9 @@ class ChatMemory:
         if len(self.store[session_id]) > self.max_turns * 2:
             self.store[session_id] = self.store[session_id][-self.max_turns * 2:]
 
+    def append_turn(self, session_id: str, user: ChatMessage, assistant: ChatMessage):
+        self.store[session_id].extend((user, assistant))
+        self.store[session_id] = self.store[session_id][-self.max_turns * 2:]
+
     def get(self, session_id: str) -> List[ChatMessage]:
         return self.store.get(session_id, [])
