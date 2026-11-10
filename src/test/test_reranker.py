@@ -7,7 +7,7 @@ from src.loaders.txt_loader import TxtLoader
 from src.rerankers.embedding_reranker import EmbeddingReranker
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / "LangSmith.env")
+load_dotenv(BASE_DIR / ".env")
 
 from src.loaders.md_loader import MarkdownLoader
 from src.processors.cleaner import TextCleaner

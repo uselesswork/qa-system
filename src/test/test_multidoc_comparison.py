@@ -20,7 +20,7 @@ from src.rag.rag_core import RAGCore
 from src.aggregators.answer_multitude_aggregator import AnswerAwareAggregator
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / "LangSmith.env")
+load_dotenv(BASE_DIR / ".env")
 
 cleaner = TextCleaner()
 splitter = SemanticSplitter()

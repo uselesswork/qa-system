@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 # ================== Path & Env ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / "LangSmith.env")
+load_dotenv(BASE_DIR / ".env")
 
 # ================== Loaders ==================
 

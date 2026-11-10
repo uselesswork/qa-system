@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / "LangSmith.env")
+load_dotenv(BASE_DIR / ".env")
 
 from src.llms.openai_chat import OpenAIChatLLM
 

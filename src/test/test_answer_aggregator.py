@@ -7,7 +7,7 @@ from src.aggregators.answer_aware_aggregator import AnswerAwareAggregator
 # ================== Path & Env ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / "LangSmith.env")
+load_dotenv(BASE_DIR / ".env")
 
 # ================== Loaders ==================
 

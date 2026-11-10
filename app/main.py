@@ -7,10 +7,17 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 import json
 
 from app.rag_app import build_rag_core
+from src.chat.memory import ChatMemory
+from src.chat.service import ChatService, LLMQueryRewriter
 
 
 class AskRequest(BaseModel):
     query: str
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
 
 
 @asynccontextmanager
@@ -24,6 +31,11 @@ async def lifespan(app: FastAPI):
     store.add(embedded_chunks)
 
     app.state.rag_core = rag_core
+    app.state.chat_service = ChatService(
+        rag_core=rag_core,
+        rewriter=LLMQueryRewriter(rag_core.llm, max_turns=5),
+        memory=ChatMemory(max_turns=10),
+    )
     print("[Lifespan] RAG system ready")
 
     yield
@@ -55,6 +67,31 @@ async def ask(req: AskRequest):
             for e in result.evidence_chunks
         ],
         "metadata": result.metadata
+    }
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    turn = await app.state.chat_service.chat(req.session_id, req.message)
+    return {
+        "session_id": req.session_id,
+        "user_message": turn.user_message.content,
+        "answer": turn.assistant_message.content,
+        "rewritten_query": turn.rewritten_query,
+        "evidence": [
+            {
+                "rank": item.rank,
+                "score": round(item.score, 4),
+                "source": str(item.source),
+                "chunk_id": item.chunk_id,
+                "content": item.content,
+            }
+            for item in turn.evidence
+        ],
+        "metadata": {
+            key: str(value) if isinstance(value, Path) or hasattr(value, "__fspath__") else value
+            for key, value in (turn.metadata or {}).items()
+        },
     }
 
 
@@ -108,7 +145,8 @@ async def ask_stream(query: str):
 @app.get("/", response_class=HTMLResponse)
 async def home():
     try:
-        with open("templates/index.html", "r", encoding="utf-8") as f:
+        template = Path(__file__).resolve().parent / "templates" / "index.html"
+        with template.open("r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return "<h1>Welcome to RAG System</h1><p>Template file not found.</p>"

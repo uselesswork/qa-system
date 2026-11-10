@@ -1,260 +1,150 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>RAG Research Demo</title>
-
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background: #f5f6f8;
-            margin: 0;
-            padding: 24px;
-            color: #111827;
-        }
-
-        .container {
-            max-width: 980px;
-            margin: auto;
-        }
-
-        h1 {
-            font-size: 22px;
-            margin-bottom: 6px;
-        }
-
-        .subtitle {
-            font-size: 14px;
-            color: #6b7280;
-            margin-bottom: 20px;
-        }
-
-        textarea {
-            width: 100%;
-            height: 60px;
-            padding: 10px;
-            font-size: 14px;
-            border-radius: 4px;
-            border: 1px solid #d1d5db;
-            resize: vertical;
-            box-sizing: border-box;
-        }
-
-        button {
-            margin-top: 10px;
-            padding: 6px 18px;
-            font-size: 14px;
-            background: #1f2937;
-            color: #ffffff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .section {
-            margin-top: 24px;
-        }
-
-        .section-title {
-            font-size: 15px;
-            font-weight: 600;
-            border-bottom: 1px solid #e5e7eb;
-            padding-bottom: 4px;
-            margin-bottom: 10px;
-        }
-
-        .answer {
-            background: #ffffff;
-            padding: 14px;
-            border-radius: 4px;
-            border: 1px solid #e5e7eb;
-            white-space: pre-wrap;
-            line-height: 1.6;
-        }
-
-        .evidence {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-left: 4px solid #2563eb;
-            border-radius: 4px;
-            padding: 10px;
-            margin-bottom: 10px;
-        }
-
-        .evidence-header {
-            font-size: 13px;
-            font-weight: 600;
-            color: #1f2937;
-            margin-bottom: 6px;
-        }
-
-        .evidence pre {
-            margin: 0;
-            font-size: 13px;
-            white-space: pre-wrap;
-            line-height: 1.5;
-        }
-
-        .status {
-            font-size: 14px;
-            color: #374151;
-        }
-
-        .error {
-            color: #b91c1c;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG 多轮问答</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#e5e9f0; --brand:#3157d5; --soft:#f4f6fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f7f8fb; color:var(--ink); font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
+    .app { display:grid; grid-template-rows:auto 1fr auto; width:min(920px,100%); min-height:100vh; margin:auto; background:#fff; border-inline:1px solid var(--line); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line); }
+    h1 { margin:0; font-size:18px; } .sub { color:var(--muted); font-size:12px; }
+    button { border:0; border-radius:9px; cursor:pointer; font:inherit; }
+    .new-chat { padding:8px 12px; color:#344054; background:var(--soft); }
+    #messages { overflow:auto; padding:28px 24px 170px; }
+    .empty { max-width:520px; margin:16vh auto 0; text-align:center; color:var(--muted); }
+    .empty strong { display:block; margin-bottom:8px; color:var(--ink); font-size:22px; }
+    .message { display:flex; gap:12px; margin:0 auto 22px; max-width:760px; }
+    .message.user { justify-content:flex-end; }
+    .bubble { max-width:min(680px,88%); padding:11px 14px; border-radius:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .user .bubble { color:#fff; background:var(--brand); border-bottom-right-radius:4px; }
+    .assistant .bubble { width:100%; padding:0; background:transparent; }
+    .answer { white-space:pre-wrap; }
+    .thinking { color:var(--muted); } .thinking::after { content:""; animation:dots 1.2s steps(4,end) infinite; }
+    @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%,100%{content:"..."} }
+    .turn-meta { margin-top:12px; border:1px solid var(--line); border-radius:10px; background:#fafbfc; }
+    details > summary { padding:9px 12px; color:#475467; cursor:pointer; user-select:none; }
+    .rewrite { padding:0 12px 10px; color:var(--muted); font-size:13px; }
+    .evidence { margin:0 10px 10px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .evidence-head { display:flex; flex-wrap:wrap; gap:8px; color:#344054; font-size:12px; font-weight:600; }
+    .evidence-content { margin-top:6px; color:#475467; white-space:pre-wrap; font-size:13px; }
+    .composer-wrap { position:fixed; bottom:0; left:50%; width:min(918px,100%); transform:translateX(-50%); padding:12px 24px 20px; background:linear-gradient(transparent,#fff 20%); }
+    .composer { display:flex; align-items:flex-end; gap:10px; padding:10px; border:1px solid #ccd3df; border-radius:14px; background:#fff; box-shadow:0 8px 28px rgba(16,24,40,.1); }
+    textarea { flex:1; min-height:44px; max-height:150px; resize:none; border:0; outline:0; padding:10px; color:var(--ink); font:inherit; }
+    .send { width:44px; height:44px; flex:0 0 auto; color:#fff; background:var(--brand); font-size:18px; }
+    .send:disabled { cursor:not-allowed; background:#aeb9da; }
+    .hint { margin-top:5px; text-align:center; color:#98a2b3; font-size:11px; }
+    .error { color:#b42318; }
+    @media (max-width:640px) { header,#messages { padding-inline:16px; } .composer-wrap { padding-inline:12px; } .bubble { max-width:94%; } }
+  </style>
 </head>
-
 <body>
-<div class="container">
-
-    <h1>RAG Research Demo</h1>
-    <div class="subtitle">
-        Answer-aware evidence aggregation · Minimal experimental UI
-    </div>
-
-    <textarea id="query" placeholder="Enter your research question..."></textarea>
-    <br>
-    <!--    <button id="runBtn" onclick="ask()">Run Query</button>-->
-    <button id="runBtn" onclick="askStream()">Run Query</button>
-
-    <div id="result"></div>
-
-</div>
-
+<main class="app">
+  <header>
+    <div><h1>RAG 多轮问答</h1><div class="sub">基于上下文连续追问，并展示检索依据</div></div>
+    <button class="new-chat" id="newChat" type="button">＋ 新对话</button>
+  </header>
+  <section id="messages" aria-live="polite"></section>
+  <div class="composer-wrap">
+    <form class="composer" id="composer">
+      <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift + Enter 换行" aria-label="问题"></textarea>
+      <button class="send" id="send" type="submit" aria-label="发送">↑</button>
+    </form>
+    <div class="hint">回答由模型生成，请结合检索依据核实关键信息</div>
+  </div>
+</main>
 <script>
-    async function ask() {
-        const query = document.getElementById("query").value;
-        const btn = document.getElementById("runBtn");
-        const resultDiv = document.getElementById("result");
+  const SESSION_KEY = "rag-chat-session";
+  const HISTORY_KEY = "rag-chat-history";
+  const messages = document.querySelector("#messages");
+  const input = document.querySelector("#input");
+  const send = document.querySelector("#send");
+  let busy = false;
+  let sessionId = localStorage.getItem(SESSION_KEY) || crypto.randomUUID();
+  let history = readHistory();
+  localStorage.setItem(SESSION_KEY, sessionId);
 
-        // ---------- UI: running ----------
-        btn.disabled = true;
-        btn.innerText = "Running...";
-        resultDiv.innerHTML = `
-            <div class="section">
-                <div class="section-title">Status</div>
-                <div class="answer status">⏳ Running RAG pipeline…</div>
-            </div>
-        `;
-
-        try {
-            const res = await fetch("/ask", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query })
-            });
-
-            const data = await res.json();
-
-            let html = `
-                <div class="section">
-                    <div class="section-title">Answer</div>
-                    <div class="answer">${data.answer}</div>
-                </div>
-            `;
-
-            if (data.evidence && data.evidence.length > 0) {
-                html += `
-                    <div class="section">
-                        <div class="section-title">Evidence Chunks</div>
-                `;
-                data.evidence.forEach(ev => {
-                    html += `
-                        <div class="evidence">
-                            <div class="evidence-header">
-                                Rank ${ev.rank} · Score ${ev.score} · Chunk ${ev.chunk_id}
-                            </div>
-                            <pre>${ev.content}</pre>
-                        </div>
-                    `;
-                });
-                html += `</div>`;
-            }
-
-            resultDiv.innerHTML = html;
-
-        } catch (err) {
-            console.error(err);
-            resultDiv.innerHTML = `
-                <div class="section">
-                    <div class="section-title">Error</div>
-                    <div class="answer error">
-                        ❌ Request failed. Check backend logs.
-                    </div>
-                </div>
-            `;
-        } finally {
-            // ---------- UI: restore ----------
-            btn.disabled = false;
-            btn.innerText = "Run Query";
-        }
+  function readHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+    catch { return []; }
+  }
+  function saveHistory() { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-20))); }
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  function renderTurn(turn) {
+    const row = element("article", `message ${turn.role}`);
+    const bubble = element("div", "bubble");
+    if (turn.role === "user") bubble.textContent = turn.content;
+    else {
+      bubble.append(element("div", turn.error ? "answer error" : "answer", turn.content));
+      if (!turn.error && (turn.rewritten_query || turn.evidence?.length)) {
+        const details = element("details", "turn-meta");
+        const count = turn.evidence?.length || 0;
+        details.append(element("summary", "", `检索详情 · ${count} 条依据`));
+        if (turn.rewritten_query) details.append(element("div", "rewrite", `检索问题：${turn.rewritten_query}`));
+        (turn.evidence || []).forEach(item => {
+          const card = element("div", "evidence");
+          card.append(element("div", "evidence-head", `#${item.rank}　相关度 ${item.score}　${item.source || "未知来源"}　${item.chunk_id || ""}`));
+          card.append(element("div", "evidence-content", item.content));
+          details.append(card);
+        });
+        bubble.append(details);
+      }
     }
-
-    async function askStream() {
-        const query = document.getElementById("query").value;
-        const btn = document.getElementById("runBtn");
-        const resultDiv = document.getElementById("result");
-
-        btn.disabled = true;
-        btn.innerText = "Running…";
-        resultDiv.innerHTML = `<div class="answer" id="answer">⏳ Generating…</div>`;
-
-        const answerDiv = document.getElementById("answer");
-
-        const evtSource = new EventSource(`/ask/stream?query=${encodeURIComponent(query)}`);
-
-        var count = 0;
-
-        evtSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            if(count === 0){
-                answerDiv.textContent = "";
-                count++;
-            }
-
-            if (data.answer_chunk) {
-                answerDiv.textContent += data.answer_chunk;
-            }
-
-            if (data.status === 'Done') {
-                btn.disabled = false;
-                btn.innerText = "Run Query";
-
-                // 渲染最终 evidence
-                if (data.evidence && data.evidence.length > 0) {
-                    let html = "<h3>Evidence Chunks:</h3>";
-                    data.evidence.forEach(ev => {
-                        html += `
-                        <div class="evidence">
-                            <strong>Rank ${ev.rank} | Score ${ev.score} | Source: ${ev.source} | Chunk ${ev.chunk_id}</strong>
-                            <pre>${ev.content}</pre>
-                        </div>`;
-                    });
-                    resultDiv.innerHTML += html;
-                }
-
-                evtSource.close();
-            }
-        };
-
-        evtSource.onerror = () => {
-            answerDiv.textContent = "❌ Stream failed";
-            btn.disabled = false;
-            btn.innerText = "Run Query";
-            evtSource.close();
-        };
+    row.append(bubble); messages.append(row); return row;
+  }
+  function render() {
+    messages.replaceChildren();
+    if (!history.length) {
+      const empty = element("div", "empty");
+      empty.append(element("strong", "", "从一个问题开始"));
+      empty.append("我会记住本次对话的上下文，你可以继续追问“为什么”或“它们有什么区别”。");
+      messages.append(empty); return;
     }
+    history.forEach(renderTurn); scrollToBottom();
+  }
+  function scrollToBottom() { requestAnimationFrame(() => messages.scrollTo({ top:messages.scrollHeight, behavior:"smooth" })); }
+  function setBusy(value) { busy = value; send.disabled = value; input.disabled = value; }
 
-
+  document.querySelector("#composer").addEventListener("submit", async event => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (!question || busy) return;
+    input.value = ""; input.style.height = "auto";
+    history.push({ role:"user", content:question }); saveHistory(); render();
+    const pending = renderTurn({ role:"assistant", content:"正在思考" });
+    pending.querySelector(".answer").classList.add("thinking"); scrollToBottom(); setBusy(true);
+    try {
+      const response = await fetch("/chat", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ session_id:sessionId, message:question })
+      });
+      if (!response.ok) throw new Error(`请求失败（${response.status}）`);
+      const data = await response.json();
+      history.push({ role:"assistant", content:data.answer, rewritten_query:data.rewritten_query, evidence:data.evidence || [] });
+      saveHistory(); render();
+    } catch (error) {
+      history.push({ role:"assistant", content:`暂时无法获取回答：${error.message}`, error:true });
+      saveHistory(); render();
+    } finally { setBusy(false); input.focus(); }
+  });
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.querySelector("#composer").requestSubmit(); }
+  });
+  input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight,150)}px`; });
+  document.querySelector("#newChat").addEventListener("click", () => {
+    if (busy) return;
+    sessionId = crypto.randomUUID(); history = [];
+    localStorage.setItem(SESSION_KEY, sessionId); localStorage.removeItem(HISTORY_KEY);
+    render(); input.focus();
+  });
+  render(); input.focus();
 </script>
-
 </body>
 </html>
