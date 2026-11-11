@@ -3,10 +3,7 @@ from typing import List
 from .base import BaseVectorStore
 from .search_result import SearchResult
 from src.embeddings.embedded_chunk import EmbeddedChunk
-
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+from src.utils.similarity import cosine_similarity
 
 
 class InMemoryVectorStore(BaseVectorStore):

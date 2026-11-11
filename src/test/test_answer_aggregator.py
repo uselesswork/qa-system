@@ -48,7 +48,7 @@ def load_md_chunks():
 
     all_chunks = []
     for doc in docs:
-        doc.content = cleaner.clean(doc.content)
+        doc.content = cleaner.clean(doc.content, preserve_newlines=True)
         all_chunks.extend(splitter.split(doc))
 
     print(f"[Semantic Splitter] Total chunks: {len(all_chunks)}")

@@ -17,7 +17,7 @@ from src.prompts.simple_prompt import SimplePromptBuilder
 from src.llms.openai_chat import OpenAIChatLLM
 from src.rag.rag_core import RAGCore
 
-from src.aggregators.answer_multitude_aggregator import AnswerAwareAggregator
+from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -33,7 +33,7 @@ def load_md_chunks_multi():
     for file_path in folder.glob("*.md"):  # 遍历所有 md 文件
         docs = loader.load(file_path)
         for doc in docs:
-            doc.content = cleaner.clean(doc.content)
+            doc.content = cleaner.clean(doc.content, preserve_newlines=True)
             all_chunks.extend(splitter.split(doc))
 
     print(f"[Semantic Splitter] Total chunks: {len(all_chunks)}")
@@ -83,7 +83,7 @@ async def run_comparison(query: str):
     # ------------------ Answer-aware RAG ------------------
     prompt_builder = FailureAwarePromptBuilder()
 
-    aggregator = AnswerAwareAggregator(
+    aggregator = CrossDocumentAnswerAggregator(
         llm=llm,
         prompt_builder=prompt_builder,
         embedder=embedder,

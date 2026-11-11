@@ -2,6 +2,7 @@ import numpy as np
 from typing import List
 from src.rerankers.base import BaseReranker
 from src.vectorstores.search_result import SearchResult
+from src.utils.similarity import cosine_similarity
 
 
 class EmbeddingReranker(BaseReranker):
@@ -23,7 +24,7 @@ class EmbeddingReranker(BaseReranker):
 
         for r in results:
             chunk_vector = r.chunk.vector
-            score = self._cosine_similarity(query_vector, chunk_vector)
+            score = cosine_similarity(query_vector, chunk_vector)
 
             reranked.append(
                 SearchResult(
@@ -34,9 +35,3 @@ class EmbeddingReranker(BaseReranker):
 
         reranked.sort(key=lambda x: x.score, reverse=True)
         return reranked[:top_k]
-
-    @staticmethod
-    def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-        return float(
-            np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-        )

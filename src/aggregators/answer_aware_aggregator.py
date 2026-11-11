@@ -33,6 +33,9 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
         results: List[SearchResult],
     ) -> AggregatedAnswer:
 
+        if not results:
+            return AggregatedAnswer(answer="未检索到可用资料，无法依据当前知识库回答。", evidence_chunks=[])
+
         # 1. 先生成最终答案（这是“答案感知”的关键）
         prompt = self.prompt_builder.build(
             query=query,

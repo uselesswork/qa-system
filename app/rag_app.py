@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from dotenv import load_dotenv
 
 from src.loaders.md_loader import MarkdownLoader
@@ -13,45 +14,47 @@ from src.retrievers.simple_retriever import SimpleRetriever
 from src.rerankers.embedding_reranker import EmbeddingReranker
 from src.llms.openai_chat import OpenAIChatLLM
 from src.rag.rag_core import RAGCore
-from src.aggregators.answer_multitude_aggregator import AnswerAwareAggregator
+from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
 
 
-def build_rag_core() -> RAGCore:
-    # ---------- 文档加载 & 预处理 ----------
+def load_chunks(folder: Path):
     cleaner = TextCleaner()
     splitter = SemanticSplitter()
     loader = MarkdownLoader()
-
-    folder = BASE_DIR / "data" / "model12"
     all_chunks = []
 
-    for file_path in folder.glob("*.md"):
+    for file_path in sorted(folder.glob("*.md")):
         docs = loader.load(file_path)
         for doc in docs:
-            doc.content = cleaner.clean(doc.content)
+            doc.content = cleaner.clean(doc.content, preserve_newlines=True)
             all_chunks.extend(splitter.split(doc))
+
+    return all_chunks
+
+
+async def build_rag_core() -> RAGCore:
+    load_dotenv(BASE_DIR / ".env")
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("缺少 OPENAI_API_KEY：请在项目根目录 .env 中配置。")
+
+    all_chunks = load_chunks(BASE_DIR / "data" / "model12")
+    if not all_chunks:
+        raise RuntimeError("data/model12 中没有可索引的 Markdown 内容。")
 
     print(f"[Semantic Splitter] Total chunks: {len(all_chunks)}")
 
-    # ---------- Embedding & VectorStore ----------
     embedder = OpenAIEmbedding()
     store = InMemoryVectorStore()
+    store.add(await embedder.embed(all_chunks))
 
-    # 这里是 async 的，但 FastAPI 启动时无法 await
-    # 所以我们用一个 trick（见下）
-    store._pending_chunks = all_chunks
-    store._embedder = embedder
-
-    # ---------- 组件 ----------
     retriever = SimpleRetriever(embedder=embedder, vectorstore=store)
     reranker = EmbeddingReranker()
     llm = OpenAIChatLLM()
     prompt_builder = FailureAwarePromptBuilder()
 
-    aggregator = AnswerAwareAggregator(
+    aggregator = CrossDocumentAnswerAggregator(
         llm=llm,
         prompt_builder=prompt_builder,
         embedder=embedder,

@@ -10,7 +10,7 @@ from src.prompts.base import BasePromptBuilder
 from src.utils.similarity import cosine_similarity
 
 
-class AnswerAwareAggregator(BaseAnswerAggregator):
+class CrossDocumentAnswerAggregator(BaseAnswerAggregator):
     """
     跨文档 Answer-aware Evidence Aggregator
 
@@ -37,6 +37,9 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
             query: str,
             results: List[SearchResult],
     ) -> AggregatedAnswer:
+
+        if not results:
+            return AggregatedAnswer(answer="未检索到可用资料，无法依据当前知识库回答。", evidence_chunks=[])
 
         # ==========================================================
         # Phase 1: 【真正的answer-aware】分析

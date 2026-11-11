@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -22,13 +23,7 @@ class ChatRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    rag_core = build_rag_core()
-
-    store = rag_core.vectorstore
-    embedder = rag_core.embedder
-
-    embedded_chunks = await embedder.embed(store._pending_chunks)
-    store.add(embedded_chunks)
+    rag_core = await build_rag_core()
 
     app.state.rag_core = rag_core
     app.state.chat_service = ChatService(
@@ -49,6 +44,23 @@ app = FastAPI(
 )
 
 
+def serialize_evidence(items):
+    return [
+        {
+            "rank": item.rank,
+            "score": round(item.score, 4),
+            "source": str(item.source) if item.source is not None else None,
+            "chunk_id": item.chunk_id,
+            "content": item.content,
+        }
+        for item in items
+    ]
+
+
+def serialize_metadata(metadata):
+    return jsonable_encoder(metadata or {})
+
+
 @app.post("/ask")
 async def ask(req: AskRequest):
     rag_core = app.state.rag_core
@@ -56,17 +68,8 @@ async def ask(req: AskRequest):
 
     return {
         "answer": result.answer,
-        "evidence": [
-            {
-                "rank": e.rank,
-                "score": round(e.score, 4),
-                "source": e.source,
-                "chunk_id": e.chunk_id,
-                "content": e.content,
-            }
-            for e in result.evidence_chunks
-        ],
-        "metadata": result.metadata
+        "evidence": serialize_evidence(result.evidence_chunks),
+        "metadata": serialize_metadata(result.metadata),
     }
 
 
@@ -78,20 +81,8 @@ async def chat(req: ChatRequest):
         "user_message": turn.user_message.content,
         "answer": turn.assistant_message.content,
         "rewritten_query": turn.rewritten_query,
-        "evidence": [
-            {
-                "rank": item.rank,
-                "score": round(item.score, 4),
-                "source": str(item.source),
-                "chunk_id": item.chunk_id,
-                "content": item.content,
-            }
-            for item in turn.evidence
-        ],
-        "metadata": {
-            key: str(value) if isinstance(value, Path) or hasattr(value, "__fspath__") else value
-            for key, value in (turn.metadata or {}).items()
-        },
+        "evidence": serialize_evidence(turn.evidence),
+        "metadata": serialize_metadata(turn.metadata),
     }
 
 
@@ -109,31 +100,11 @@ async def ask_stream(query: str):
                 continue
             result = event.result
 
-            # 最终事件直接使用本次生成的回答与证据。
-            evidence_list = []
-            for e in result.evidence_chunks:
-                evidence_item = {
-                    'rank': e.rank,
-                    'score': round(e.score, 4),
-                    'source': str(e.source),
-                    'chunk_id': e.chunk_id,
-                    'content': e.content
-                }
-                evidence_list.append(evidence_item)
-
-            # 处理 metadata 中可能包含的不可序列化对象。
-            metadata_serializable = {}
-            for key, value in result.metadata.items():
-                if isinstance(value, (Path, type(None))) or hasattr(value, '__fspath__'):
-                    metadata_serializable[key] = str(value)
-                else:
-                    metadata_serializable[key] = value
-
             final_data = {
                 'status': 'Done',
                 'answer': result.answer,
-                'evidence': evidence_list,
-                'metadata': metadata_serializable
+                'evidence': serialize_evidence(result.evidence_chunks),
+                'metadata': serialize_metadata(result.metadata),
             }
 
             yield f"data: {json.dumps(final_data, ensure_ascii=False)}\n\n"

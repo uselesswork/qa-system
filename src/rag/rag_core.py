@@ -46,12 +46,18 @@ class RAGCore:
 
     async def _retrieve(self, query: str) -> list[SearchResult]:
         """普通问答与流式问答共用同一套召回和重排流程。"""
-        results = await self.retriever.retrieve(query=query, top_k=self.top_k * 2)
+        batch = await self.retriever.retrieve_with_vector(
+            query=query, top_k=self.top_k * 2
+        )
+        results = batch.results
 
         if self.reranker:
-            query_embedding = await self.embedder.embed_texts([query])
+            query_vector = batch.query_vector
+            if query_vector is None:
+                query_embedding = await self.embedder.embed_texts([query])
+                query_vector = query_embedding[0].vector
             results = self.reranker.rerank(
-                query_vector=query_embedding[0].vector,
+                query_vector=query_vector,
                 results=results,
                 top_k=self.top_k,
             )
@@ -65,7 +71,6 @@ class RAGCore:
                 draft_answer=draft_answer.content,
             )
             results = await answer_reranker.rerank(
-                query_vector=None,
                 results=results,
                 top_k=self.top_k,
             )

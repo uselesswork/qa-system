@@ -63,7 +63,7 @@ def build_chunks_semantic_splitter(docs):
     all_chunks = []
 
     for doc in docs:
-        doc.content = cleaner.clean(doc.content)
+        doc.content = cleaner.clean(doc.content, preserve_newlines=True)
         all_chunks.extend(splitter.split(doc))
 
     return all_chunks

@@ -7,7 +7,7 @@ from src.loaders.document import Document
 
 class HeadingSemanticSplitter(BaseSemanticSplitter):
 
-    HEADING_PATTERN = re.compile(r"^(#{1,6})\\s+(.+)$", re.MULTILINE)
+    HEADING_PATTERN = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
     def split(self, document: Document) -> List[TextChunk]:
         text = document.content
@@ -18,23 +18,30 @@ class HeadingSemanticSplitter(BaseSemanticSplitter):
             return []
 
         chunks: List[TextChunk] = []
-        for i, m in enumerate(matches):
-            start = m.start()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
 
-            chunk_text = text[start:end].strip()
-            if not chunk_text:
-                continue
+        def add_chunk(start: int, end: int, heading: str | None):
+            raw = text[start:end]
+            content = raw.strip()
+            if not content:
+                return
+            char_start = start + len(raw) - len(raw.lstrip())
+            char_end = end - (len(raw) - len(raw.rstrip()))
+            chunks.append(TextChunk(
+                content=content,
+                metadata={
+                    **document.metadata,
+                    "chunk_id": len(chunks),
+                    "char_start": char_start,
+                    "char_end": char_end,
+                    "semantic": "heading",
+                    "heading": heading,
+                },
+            ))
 
-            chunks.append(
-                TextChunk(
-                    content=chunk_text,
-                    metadata={
-                        **document.metadata,
-                        "semantic": "heading",
-                        "heading": m.group(2),
-                    }
-                )
-            )
+        # 标题前的说明文字也属于文档，不能在标题切分时丢弃。
+        add_chunk(0, matches[0].start(), None)
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            add_chunk(match.start(), end, match.group(2).strip())
 
-        return  chunks
+        return chunks

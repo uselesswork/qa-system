@@ -1,11 +1,9 @@
 from typing import List
-import numpy as np
 
-from src.rerankers.base import BaseReranker
 from src.vectorstores.search_result import SearchResult
 
 
-class AnswerAwareReranker(BaseReranker):
+class AnswerAwareReranker:
     """
     Answer-aware reranker:
     使用 LLM 判断 chunk 是否真正支持 draft answer
@@ -23,7 +21,6 @@ class AnswerAwareReranker(BaseReranker):
 
     async def rerank(
         self,
-        query_vector: np.ndarray,
         results: List[SearchResult],
         top_k: int = 5
     ) -> List[SearchResult]:

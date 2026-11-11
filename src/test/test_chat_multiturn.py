@@ -17,7 +17,7 @@ from src.vectorstores.memory_store import InMemoryVectorStore
 from src.retrievers.simple_retriever import SimpleRetriever
 from src.rerankers.embedding_reranker import EmbeddingReranker
 from src.llms.openai_chat import OpenAIChatLLM
-from src.aggregators.answer_multitude_aggregator import AnswerAwareAggregator
+from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 from src.rag.rag_core import RAGCore
 
 from src.chat.service import ChatService, LLMQueryRewriter
@@ -36,7 +36,7 @@ def load_md_chunks():
     for file_path in folder.glob("*.md"):
         docs = loader.load(file_path)
         for doc in docs:
-            doc.content = cleaner.clean(doc.content)
+            doc.content = cleaner.clean(doc.content, preserve_newlines=True)
             all_chunks.extend(splitter.split(doc))
 
     print(f"[Loader] total chunks = {len(all_chunks)}")
@@ -57,7 +57,7 @@ async def build_chat_service():
     llm = OpenAIChatLLM()
     prompt_builder = FailureAwarePromptBuilder()
 
-    aggregator = AnswerAwareAggregator(
+    aggregator = CrossDocumentAnswerAggregator(
         llm=llm,
         prompt_builder=prompt_builder,
         embedder=embedder,
