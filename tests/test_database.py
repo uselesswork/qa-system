@@ -104,10 +104,15 @@ def test_demo_seed_is_idempotent_and_does_not_overwrite_changed_input(tmp_path):
     Base.metadata.create_all(engine)
 
     first = seed_demo_data(engine, sample_dir)
+    with db_session.create_session_factory(engine).begin() as session:
+        for doc in session.scalars(select(Document)):
+            doc.storage_key = f"data/model12/{doc.original_name}"
     second = seed_demo_data(engine, sample_dir)
 
     assert (first.knowledge_bases_created, first.documents_created, first.chunks_created) == (5, 6, 6)
     assert (second.knowledge_bases_created, second.documents_created, second.chunks_created) == (0, 0, 0)
+    assert first.storage_keys_updated == 0
+    assert second.storage_keys_updated == 6
     assert first.descriptions_filled == second.descriptions_filled == 0
     with db_session.create_session_factory(engine)() as session:
         knowledge_bases = session.scalars(select(KnowledgeBase)).all()
@@ -124,6 +129,8 @@ def test_demo_seed_is_idempotent_and_does_not_overwrite_changed_input(tmp_path):
             kb.id for kb in knowledge_bases
         }
         assert {doc.status for doc in session.scalars(select(Document))} == {"pending"}
+        assert all(doc.storage_key == f"data/multi_document_examples/{doc.original_name}"
+                   for doc in documents)
 
     with db_session.create_session_factory(engine).begin() as session:
         session.get(KnowledgeBase, DEMO_KB_ID).description = None
@@ -132,6 +139,7 @@ def test_demo_seed_is_idempotent_and_does_not_overwrite_changed_input(tmp_path):
     backfill = seed_demo_data(engine, sample_dir)
     assert (backfill.knowledge_bases_created, backfill.descriptions_filled,
             backfill.documents_created, backfill.chunks_created) == (0, 1, 0, 0)
+    assert backfill.storage_keys_updated == 0
     with db_session.create_session_factory(engine)() as session:
         assert session.get(KnowledgeBase, DEMO_KB_ID).description == DEMO_GROUPS[0].description
         assert session.get(KnowledgeBase, DEMO_GROUPS[1].id).description == "用户自定义描述"

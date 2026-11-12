@@ -8,18 +8,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 def test_txt():
     loader = TxtLoader()
-    docs = loader.load(BASE_DIR / "data" / "model1" /"test.txt")
+    docs = loader.load(BASE_DIR / "data" / "loader_examples" /"test.txt")
     assert len(docs) == 1
     print(docs[0].content)
 
 def test_md():
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model1" /"test.md")
+    docs = loader.load(BASE_DIR / "data" / "loader_examples" /"test.md")
     print(docs[0].content)
 
 def test_pdf():
     loader = PdfLoader()
-    docs = loader.load(BASE_DIR / "data" / "model1" /"test.pdf")
+    docs = loader.load(BASE_DIR / "data" / "loader_examples" /"test.pdf")
     print(docs[0].content)
 
 if __name__ == "__main__":

@@ -20,6 +20,9 @@ from src.processors.semantic.semantic_splitter import SemanticSplitter
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEMO_SOURCE_DIR = PROJECT_ROOT / "data" / "multi_document_examples"
+DEMO_STORAGE_PREFIX = "data/multi_document_examples"
+LEGACY_STORAGE_PREFIX = "data/model12"
 DEMO_KB_ID = str(uuid5(NAMESPACE_URL, "qa-system:demo-knowledge-base:v1"))
 DEMO_KB_NAME = "RAG 演示资料（未建向量索引）"
 
@@ -73,17 +76,18 @@ class SeedResult:
     descriptions_filled: int = 0
     documents_created: int = 0
     chunks_created: int = 0
+    storage_keys_updated: int = 0
 
 
 def seed_demo_data(
     engine: Engine, source_dir: Path | None = None
 ) -> SeedResult:
-    source_dir = source_dir or PROJECT_ROOT / "data" / "model12"
+    source_dir = source_dir or DEMO_SOURCE_DIR
     loader = MarkdownLoader()
     cleaner = TextCleaner()
     splitter = SemanticSplitter()
     factory = create_session_factory(engine)
-    kb_created = descriptions_filled = docs_created = chunks_created = 0
+    kb_created = descriptions_filled = docs_created = chunks_created = storage_keys_updated = 0
 
     # 先读完输入，缺文件或解码失败时不会留下半套数据。
     inputs = []
@@ -119,7 +123,7 @@ def seed_demo_data(
                     knowledge_base_id=group.id,
                     original_name=filename,
                     file_type="md",
-                    storage_key=f"data/model12/{filename}",
+                    storage_key=f"{DEMO_STORAGE_PREFIX}/{filename}",
                     sha256=digest,
                     size_bytes=len(raw),
                     status="pending",
@@ -127,6 +131,9 @@ def seed_demo_data(
                 docs_created += 1
             elif saved.knowledge_base_id != group.id or saved.sha256 != digest:
                 raise RuntimeError(f"演示文档 {filename} 与现有记录冲突，已停止写入。")
+            elif saved.storage_key == f"{LEGACY_STORAGE_PREFIX}/{filename}":
+                saved.storage_key = f"{DEMO_STORAGE_PREFIX}/{filename}"
+                storage_keys_updated += 1
 
             for ordinal, text_chunk in enumerate(text_chunks):
                 chunk_id = str(uuid5(NAMESPACE_URL, f"{document_id}:{ordinal}"))
@@ -147,7 +154,8 @@ def seed_demo_data(
                 ))
                 chunks_created += 1
 
-    return SeedResult(kb_created, descriptions_filled, docs_created, chunks_created)
+    return SeedResult(kb_created, descriptions_filled, docs_created,
+                      chunks_created, storage_keys_updated)
 
 
 def main() -> None:
@@ -159,7 +167,8 @@ def main() -> None:
             f"新增知识库 {result.knowledge_bases_created}、"
             f"补全描述 {result.descriptions_filled}、"
             f"文档 {result.documents_created}、"
-            f"片段 {result.chunks_created}。"
+            f"片段 {result.chunks_created}、"
+            f"更新旧资料路径 {result.storage_keys_updated}。"
         )
     finally:
         engine.dispose()

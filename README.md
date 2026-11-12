@@ -39,7 +39,7 @@
 
 ## 当前进度
 
-- **资料处理**：支持上传 TXT、可提取文字的 PDF 和 Markdown；按标题/长度切分，Embedding 后写入 Qdrant。`data/model12` 留作实验和播种素材，不再在 Web 启动时自动索引。
+- **资料处理**：支持上传 TXT、可提取文字的 PDF 和 Markdown；按标题/长度切分，Embedding 后写入 Qdrant。`data/multi_document_examples` 留作实验和播种素材，不再在 Web 启动时自动索引。
 - **检索生成**：当前 Web 使用 OpenAI Embedding、Qdrant、相似度检索、Embedding 重排及答案感知聚合；内存向量库保留为早期实验实现。回答带证据片段和元数据。
 - **对话体验**：登录后由 MySQL 读取本人历史会话和消息，追问时改写查询；网页展示会话列表、回答和可折叠证据，刷新后可续问。
 - **实验能力**：可选的答案感知重排已写入 `RAGCore`，但当前 Web 组装没有开启。历史对比主要是示例观察，没有足够的统一指标证明整体准确率提升。
@@ -107,7 +107,7 @@
 .\.venv\Scripts\python.exe -m scripts.seed_demo_data
 ```
 
-预期版本是 `0002_auth_and_chat`。播种脚本从 `data/model12` 取六份 Markdown，空库首次写入 5 个知识库、6 份文档、6 个片段；重复运行不新增。播种文档保持 `pending`，不会自动向 Qdrant 写入向量。2026-11-12 本机迁移后有 6 个既有知识库，均保留为未归属，普通账号不可访问；新账号须自己创建库并上传资料。默认 Qdrant 本地数据写入 `data/qdrant/`，上传原文件写入 `data/uploads/`，两者均已被 Git 忽略。详见[第十阶段](docs/第十阶段-持久化知识库底座.md)与[第十一阶段](docs/第十一阶段-用户权限与会话持久化.md)。
+预期版本是 `0002_auth_and_chat`。播种脚本从 `data/multi_document_examples` 取六份 Markdown，空库首次写入 5 个知识库、6 份文档、6 个片段；重复运行不新增。播种文档保持 `pending`，不会自动向 Qdrant 写入向量。2026-11-12 本机迁移后有 6 个既有知识库，均保留为未归属，普通账号不可访问；新账号须自己创建库并上传资料。默认 Qdrant 本地数据写入 `data/qdrant/`，上传原文件写入 `data/uploads/`，两者均已被 Git 忽略。详见[第十阶段](docs/第十阶段-持久化知识库底座.md)与[第十一阶段](docs/第十一阶段-用户权限与会话持久化.md)。
 
 ## 配置大模型
 
@@ -120,7 +120,7 @@
 
 `app/rag_app.py` 使用以上两个类的默认构造参数；目前 `.env` 不配置模型名，切换模型需修改构造参数或代码默认值。`OpenAIChatLLM` 的 `temperature` 默认是 `None`，请求中不发送该参数：手动联调时 `gpt-6-luna` 拒绝了原先显式传入的 `0.2`。只有确认目标模型和调用方式支持自定义温度时才应显式设置。两类模型均通过 OpenAI SDK 读取环境配置，至少需要 `OPENAI_API_KEY`；根目录 `.env.example` 只提供空 Key 和公开配置示例。LangSmith 跟踪可选。不要将真实密钥写进文档、截图或提交记录；当前 Web 没有页面切换模型的入口。
 
-启动仍要求配置 `OPENAI_API_KEY`，但不再在 lifespan 阶段对 `data/model12` 计算 Embedding。上传与问答时需要模型服务可用。`/docs` 是 FastAPI 自动生成的接口文档；写接口在登录 Cookie 外还需 `X-CSRF-Token`，其值可从登录响应或 `GET /auth/me` 获取。
+启动仍要求配置 `OPENAI_API_KEY`，但不再在 lifespan 阶段对 `data/multi_document_examples` 计算 Embedding。上传与问答时需要模型服务可用。`/docs` 是 FastAPI 自动生成的接口文档；写接口在登录 Cookie 外还需 `X-CSRF-Token`，其值可从登录响应或 `GET /auth/me` 获取。
 
 ## 问答接口
 
@@ -190,13 +190,15 @@ scripts/                         建库 SQL 与幂等演示数据脚本
 tests/                           默认无密钥回归测试
 pytest.ini、conftest.py           默认收集范围与测试追踪开关
 src/test/                        模块脚本和实验入口
-data/model*/                     分阶段实验素材
+data/*_examples/                按用途命名的实验与播种素材
 docs/                            本项目的阶段说明
 ```
 
 ## 测试文档文件
 
-`data/model1`、`model2` 等目录保存原模块的测试素材；`data/model12` 是演示数据播种来源，当前 Web 启动不再固定读取或索引它。播种文档仍为 `pending` 且未归属；普通用户要自行创建知识库并上传。大文件、扫描 PDF、恶意输入、跨文档准确性和成本尚无系统化验收。
+`data/loader_examples` 用于加载器，`basic_pipeline_examples` 用于基础处理、向量化和检索，`reranking_examples` 用于重排，`noisy_rag_examples` 用于噪声/聚合与语义切分，`multi_document_examples` 用于多文档实验和演示数据播种。目录按用途而不是阶段号命名；当前 Web 启动不再固定索引这些素材。播种文档仍为 `pending` 且未归属；普通用户要自行创建知识库并上传。大文件、扫描 PDF、恶意输入、跨文档准确性和成本尚无系统化验收。
+
+目录更名后重跑 `python -m scripts.seed_demo_data` 会把原播种记录中的 `data/model12/...` 存储路径更新为 `data/multi_document_examples/...`，不会改变文档 ID、哈希、正文、用户归属或手动上传记录。本机已将 6 条旧播种路径更新；当前旧路径 0 条、新路径 6 条，文档总数仍为 7。
 
 ## 当前实现边界
 

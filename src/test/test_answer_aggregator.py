@@ -44,7 +44,7 @@ splitter = SemanticSplitter()
 
 def load_md_chunks():
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model10" / "test.md")
+    docs = loader.load(BASE_DIR / "data" / "noisy_rag_examples" / "test.md")
 
     all_chunks = []
     for doc in docs:

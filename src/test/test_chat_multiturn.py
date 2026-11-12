@@ -30,7 +30,7 @@ splitter = SemanticSplitter()
 
 def load_md_chunks():
     loader = MarkdownLoader()
-    folder = BASE_DIR / "data" / "model12"
+    folder = BASE_DIR / "data" / "multi_document_examples"
     all_chunks = []
 
     for file_path in folder.glob("*.md"):

@@ -98,7 +98,7 @@ def test_legacy_retriever_still_works_with_reranker():
 
 
 def test_build_rag_core_does_not_index_legacy_public_documents(tmp_path, monkeypatch):
-    folder = tmp_path / "data" / "model12"
+    folder = tmp_path / "data" / "multi_document_examples"
     folder.mkdir(parents=True)
     (folder / "one.md").write_text("# 标题\n正文", encoding="utf-8")
 

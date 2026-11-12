@@ -27,7 +27,7 @@ splitter = SemanticSplitter()
 
 def load_md_chunks_multi():
     loader = MarkdownLoader()
-    folder = BASE_DIR / "data" / "model12"
+    folder = BASE_DIR / "data" / "multi_document_examples"
     all_chunks = []
 
     for file_path in folder.glob("*.md"):  # 遍历所有 md 文件

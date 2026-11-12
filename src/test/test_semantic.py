@@ -73,7 +73,7 @@ def build_chunks_semantic_splitter(docs):
 
 def load_md_chunks(use_semantic: bool):
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model10" / "test.md")
+    docs = loader.load(BASE_DIR / "data" / "noisy_rag_examples" / "test.md")
 
     if use_semantic:
         print("[Semantic Splitter]")

@@ -13,7 +13,7 @@ splitter = TextSplitter()
 
 def txt_test():
     loader = TxtLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.txt")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.txt")
 
     for doc in docs:
         doc.content = cleaner.clean(doc.content)
@@ -27,7 +27,7 @@ def txt_test():
 
 def md_test():
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.md")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.md")
 
     for doc in docs:
         doc.content = cleaner.clean(doc.content)
@@ -41,7 +41,7 @@ def md_test():
 
 def pdf_test():
     loader = PdfLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.pdf")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.pdf")
 
     for doc in docs:
         doc.content = cleaner.clean(doc.content)

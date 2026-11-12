@@ -32,19 +32,19 @@ def build_chunks_from_docs(docs):
 
 def txt_test():
     loader = TxtLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.txt")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.txt")
     return build_chunks_from_docs(docs)
 
 
 def md_test():
     loader = MarkdownLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.md")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.md")
     return build_chunks_from_docs(docs)
 
 
 def pdf_test():
     loader = PdfLoader()
-    docs = loader.load(BASE_DIR / "data" / "model2" / "test.pdf")
+    docs = loader.load(BASE_DIR / "data" / "basic_pipeline_examples" / "test.pdf")
     return build_chunks_from_docs(docs)
 
 
