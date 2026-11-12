@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 import json
 
 from app.rag_app import build_rag_core
+from app.api.knowledge import router as knowledge_router
 from src.chat.memory import ChatMemory
 from src.chat.service import ChatService, LLMQueryRewriter
 
@@ -35,6 +36,12 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    service = getattr(app.state, "knowledge_service", None)
+    if service is not None:
+        service.vectors.close()
+        app.state.knowledge_engine.dispose()
+        app.state.knowledge_service = None
+        app.state.knowledge_engine = None
     print("[Lifespan] shutdown")
 
 
@@ -42,6 +49,7 @@ app = FastAPI(
     title="Minimal RAG Backend",
     lifespan=lifespan
 )
+app.include_router(knowledge_router)
 
 
 def serialize_evidence(items):

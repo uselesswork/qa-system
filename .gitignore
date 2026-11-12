@@ -8,3 +8,5 @@ __pycache__/
 !.env.example
 LangSmith.env
 .resume_qa_*/
+data/uploads/
+data/qdrant/
