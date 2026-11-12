@@ -10,6 +10,10 @@ from src.vectorstores.base import BaseVectorStore
 from src.vectorstores.search_result import SearchResult
 
 
+class VectorDimensionError(ValueError):
+    """现有集合的向量维度与当前 Embedding 模型不一致。"""
+
+
 class QdrantVectorStore(BaseVectorStore):
     def __init__(self, client: QdrantClient, collection: str = "qa_chunks",
                  knowledge_base_id: str | None = None,
@@ -28,7 +32,9 @@ class QdrantVectorStore(BaseVectorStore):
         if self.client.collection_exists(self.collection):
             existing = self.client.get_collection(self.collection).config.params.vectors
             if existing.size != dimension:
-                raise ValueError(f"向量维度不匹配：集合为 {existing.size}，新向量为 {dimension}")
+                raise VectorDimensionError(
+                    f"向量维度不匹配：集合为 {existing.size}，新向量为 {dimension}。"
+                )
             return
         self.client.create_collection(
             collection_name=self.collection,

@@ -9,6 +9,7 @@ import asyncio
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 # 冒烟测试不验证追踪；先于 RAGCore/LangSmith 导入关闭，避免离线模式外发内容。
 os.environ["LANGSMITH_TRACING"] = "false"
@@ -55,7 +56,8 @@ async def main(live: bool = False) -> None:
     engine = create_database_engine()
     sessions = create_session_factory(engine)
     embedder = OpenAIEmbedding() if live else OfflineEmbedding()
-    vectors = QdrantVectorStore.local(ROOT / "data" / "qdrant")
+    smoke_collection = f"qa_smoke_{uuid4().hex}"
+    vectors = QdrantVectorStore.local(ROOT / "data" / "qdrant", smoke_collection)
     service = KnowledgeService(sessions, vectors, embedder, ROOT / "data" / "uploads")
     app = FastAPI()
     app.include_router(router)
@@ -92,7 +94,7 @@ async def main(live: bool = False) -> None:
             engine.dispose()
             engine = create_database_engine()
             sessions = create_session_factory(engine)
-            vectors = QdrantVectorStore.local(ROOT / "data" / "qdrant")
+            vectors = QdrantVectorStore.local(ROOT / "data" / "qdrant", smoke_collection)
             service = KnowledgeService(sessions, vectors, embedder, ROOT / "data" / "uploads")
             app.state.knowledge_service = service
             response = await client.post(
@@ -104,19 +106,23 @@ async def main(live: bool = False) -> None:
             model_mode = "真实 Embedding/LLM" if live else "假 Embedding/LLM（未外发）"
             print(f"真实 MySQL、Qdrant、{model_mode}、重启后按库问答：通过")
     finally:
-        if kb_id:
-            with sessions() as session:
-                document_ids = list(session.scalars(select(Document.id).where(
-                    Document.knowledge_base_id == kb_id
-                )))
-            for document_id in document_ids:
-                service.delete_document(kb_id, document_id)
-            with sessions.begin() as session:
-                kb = session.get(KnowledgeBase, kb_id)
-                if kb is not None:
-                    session.delete(kb)
-        vectors.close()
-        engine.dispose()
+        try:
+            if kb_id:
+                with sessions() as session:
+                    document_ids = list(session.scalars(select(Document.id).where(
+                        Document.knowledge_base_id == kb_id
+                    )))
+                for document_id in document_ids:
+                    service.delete_document(kb_id, document_id)
+                with sessions.begin() as session:
+                    kb = session.get(KnowledgeBase, kb_id)
+                    if kb is not None:
+                        session.delete(kb)
+            if vectors.client.collection_exists(smoke_collection):
+                vectors.client.delete_collection(smoke_collection)
+        finally:
+            vectors.close()
+            engine.dispose()
 
 
 if __name__ == "__main__":

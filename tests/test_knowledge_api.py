@@ -6,6 +6,7 @@ import numpy as np
 from sqlalchemy import create_engine, event, select
 
 from app.main import app
+from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 from src.db import Base, Chunk, Document
 from src.db.session import create_session_factory
 from src.embeddings.embedded_chunk import EmbeddedChunk
@@ -34,6 +35,12 @@ class FailingEmbedding(FakeEmbedding):
         raise RuntimeError("simulated embedding outage")
 
 
+class ThreeDimensionEmbedding(FakeEmbedding):
+    async def embed(self, chunks):
+        return [EmbeddedChunk(c.content, np.array([1.0, 0.0, 0.0], dtype=np.float32),
+                              dict(c.metadata)) for c in chunks]
+
+
 def make_service(tmp_path):
     engine = create_engine(f"sqlite+pysqlite:///{(tmp_path / 'db.sqlite').as_posix()}")
 
@@ -53,12 +60,16 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
     async def scenario():
         engine, service = make_service(tmp_path)
         app.state.knowledge_service = service
+        prompt_builder = SimpleNamespace(
+            build=lambda query, chunks: "|".join(r.chunk.content for r in chunks)
+        )
         app.state.rag_core = RAGCore(
             embedder=FakeEmbedding(), vectorstore=None, retriever=None,
-            prompt_builder=SimpleNamespace(
-                build=lambda query, chunks: "|".join(r.chunk.content for r in chunks)
+            prompt_builder=prompt_builder, llm=FakeLLM(), top_k=5,
+            aggregator=CrossDocumentAnswerAggregator(
+                llm=FakeLLM(), prompt_builder=prompt_builder,
+                embedder=FakeEmbedding(), max_chunks=3,
             ),
-            llm=FakeLLM(), top_k=5,
         )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -89,6 +100,7 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
             assert answer.status_code == 200, answer.text
             assert "甲库独有证据" in answer.json()["answer"]
             assert "乙库独有证据" not in answer.json()["answer"]
+            assert answer.json()["evidence"]
 
             service.vectors.close()
             engine.dispose()
@@ -148,6 +160,13 @@ def test_upload_validation_and_index_failure(tmp_path):
             )
             assert retry.status_code == 200, retry.text
             assert retry.json()["status"] == "ready"
+            service.embedder = ThreeDimensionEmbedding()
+            mismatch = await client.post(f"/knowledge-bases/{kb_id}/documents",
+                                         files={"file": ("wide.md", b"# wide\ntext")})
+            assert mismatch.status_code == 503
+            assert "向量维度不匹配" in mismatch.json()["detail"]
+            assert "集合为 2" in mismatch.json()["detail"]
+            assert "新向量为 3" in mismatch.json()["detail"]
         service.vectors.close()
         engine.dispose()
 

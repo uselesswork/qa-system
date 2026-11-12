@@ -15,7 +15,7 @@ from src.loaders.pdf_loader import PdfLoader
 from src.loaders.txt_loader import TxtLoader
 from src.processors.cleaner import TextCleaner
 from src.processors.semantic.semantic_splitter import SemanticSplitter
-from src.vectorstores.qdrant_store import QdrantVectorStore
+from src.vectorstores.qdrant_store import QdrantVectorStore, VectorDimensionError
 
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -135,10 +135,13 @@ class KnowledgeService:
         try:
             await self._index(document_id, kb_id, chunks)
         except Exception as exc:
+            detail = str(exc) if isinstance(exc, VectorDimensionError) else type(exc).__name__
             with self.sessions.begin() as session:
                 doc = session.get(Document, document_id)
                 doc.status = "failed"
-                doc.error_message = type(exc).__name__
+                doc.error_message = detail
+            if isinstance(exc, VectorDimensionError):
+                raise KnowledgeError(f"索引失败：{detail}文档已保留为 failed，可重试。", 503) from exc
             raise KnowledgeError("索引失败，文档已保留为 failed，可重试。", 503) from exc
         with self.sessions() as session:
             return self.doc_json(session.get(Document, document_id))

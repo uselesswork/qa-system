@@ -5,6 +5,7 @@ from threading import Lock
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
+from openai import APIError
 from pydantic import BaseModel
 
 from src.db.session import create_database_engine, create_session_factory
@@ -142,7 +143,12 @@ async def ask_knowledge_base(kb_id: str, body: KnowledgeAsk, request: Request,
         reranker=core.reranker, aggregator=core.aggregator,
         top_k=core.top_k, enable_answer_aware=core.enable_answer_aware,
     )
-    result = await scoped_core.answer(body.query)
+    try:
+        result = await scoped_core.answer(body.query)
+    except APIError as exc:
+        raise HTTPException(
+            502, "模型服务调用失败，请检查模型名称、请求参数和服务状态。"
+        ) from exc
     return {
         "answer": result.answer,
         "evidence": [{"rank": e.rank, "score": round(e.score, 4),
