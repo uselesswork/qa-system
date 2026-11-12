@@ -46,46 +46,59 @@ class KnowledgeService:
                 "original_name": doc.original_name, "status": doc.status,
                 "error_message": doc.error_message, "size_bytes": doc.size_bytes}
 
-    def create_kb(self, name: str, description: str | None) -> dict:
+    def create_kb(self, name: str, description: str | None,
+                  owner_id: str | None = None) -> dict:
         name = name.strip()
         if not name or len(name) > 128:
             raise KnowledgeError("知识库名称不能为空且不能超过 128 个字符。")
         with self.sessions.begin() as session:
-            kb = KnowledgeBase(name=name, description=description)
+            kb = KnowledgeBase(name=name, description=description, owner_id=owner_id)
             session.add(kb)
             session.flush()
             return self.kb_json(kb)
 
-    def list_kbs(self) -> list[dict]:
+    def list_kbs(self, owner_id: str | None = None) -> list[dict]:
         with self.sessions() as session:
+            stmt = select(KnowledgeBase)
+            if owner_id is not None:
+                stmt = stmt.where(KnowledgeBase.owner_id == owner_id)
             return [self.kb_json(kb) for kb in session.scalars(
-                select(KnowledgeBase).order_by(KnowledgeBase.created_at, KnowledgeBase.id)
+                stmt.order_by(KnowledgeBase.created_at, KnowledgeBase.id)
             )]
 
-    def get_kb(self, kb_id: str) -> dict:
+    def get_kb(self, kb_id: str, owner_id: str | None = None) -> dict:
         with self.sessions() as session:
             kb = session.get(KnowledgeBase, kb_id)
-            if kb is None:
+            if kb is None or (owner_id is not None and kb.owner_id != owner_id):
                 raise KnowledgeError("知识库不存在。", 404)
             return self.kb_json(kb)
 
-    def list_documents(self, kb_id: str) -> list[dict]:
-        self.get_kb(kb_id)
+    def list_documents(self, kb_id: str, owner_id: str | None = None) -> list[dict]:
+        self.get_kb(kb_id, owner_id)
         with self.sessions() as session:
             return [self.doc_json(doc) for doc in session.scalars(
                 select(Document).where(Document.knowledge_base_id == kb_id)
                 .order_by(Document.created_at, Document.id)
             )]
 
-    def ready_document_ids(self, kb_id: str) -> list[str]:
-        self.get_kb(kb_id)
+    def ready_document_ids(self, kb_id: str, owner_id: str | None = None) -> list[str]:
+        self.get_kb(kb_id, owner_id)
         with self.sessions() as session:
             return list(session.scalars(select(Document.id).where(
                 Document.knowledge_base_id == kb_id, Document.status == "ready"
             )))
 
-    async def upload(self, kb_id: str, filename: str, content: bytes) -> dict:
-        self.get_kb(kb_id)
+    def owner_ready_document_ids(self, owner_id: str) -> list[str]:
+        with self.sessions() as session:
+            return list(session.scalars(
+                select(Document.id).join(KnowledgeBase).where(
+                    KnowledgeBase.owner_id == owner_id, Document.status == "ready"
+                )
+            ))
+
+    async def upload(self, kb_id: str, filename: str, content: bytes,
+                     owner_id: str | None = None) -> dict:
+        self.get_kb(kb_id, owner_id)
         safe_name = Path(filename.replace("\\", "/")).name
         suffix = Path(safe_name).suffix.lower()
         if not safe_name or len(safe_name) > 255 or suffix not in LOADERS:
@@ -178,7 +191,9 @@ class KnowledgeService:
                 pass  # ready 过滤仍会阻止孤儿向量进入检索结果
             raise
 
-    def delete_document(self, kb_id: str, document_id: str) -> None:
+    def delete_document(self, kb_id: str, document_id: str,
+                        owner_id: str | None = None) -> None:
+        self.get_kb(kb_id, owner_id)
         with self.sessions.begin() as session:
             doc = session.get(Document, document_id)
             if doc is None or doc.knowledge_base_id != kb_id:
@@ -195,7 +210,9 @@ class KnowledgeService:
         if storage_key:
             (self.upload_dir / Path(storage_key).name).unlink(missing_ok=True)
 
-    async def reindex_document(self, kb_id: str, document_id: str) -> dict:
+    async def reindex_document(self, kb_id: str, document_id: str,
+                               owner_id: str | None = None) -> dict:
+        self.get_kb(kb_id, owner_id)
         with self.sessions.begin() as session:
             doc = session.get(Document, document_id)
             if doc is None or doc.knowledge_base_id != kb_id:

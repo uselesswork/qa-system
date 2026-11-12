@@ -14,6 +14,8 @@ from src.knowledge.service import KnowledgeError, KnowledgeService, MAX_FILE_BYT
 from src.rag.rag_core import RAGCore
 from src.retrievers.simple_retriever import SimpleRetriever
 from src.vectorstores.qdrant_store import QdrantVectorStore
+from app.api.auth import require_csrf, require_user
+from src.auth.service import AuthContext
 
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
@@ -61,42 +63,68 @@ def translate(exc: KnowledgeError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+def scoped_core(core: RAGCore, service: KnowledgeService,
+                ready_ids: list[str], kb_id: str | None = None) -> RAGCore:
+    store = QdrantVectorStore(
+        service.vectors.client, service.vectors.collection, kb_id, ready_ids
+    )
+    return RAGCore(
+        embedder=core.embedder, vectorstore=store,
+        retriever=SimpleRetriever(core.embedder, store),
+        prompt_builder=core.prompt_builder, llm=core.llm,
+        reranker=core.reranker, aggregator=core.aggregator,
+        top_k=core.top_k, enable_answer_aware=core.enable_answer_aware,
+    )
+
+
+def user_core(request: Request, service: KnowledgeService, user_id: str) -> RAGCore:
+    core = getattr(request.app.state, "rag_core", None)
+    if core is None:
+        raise HTTPException(503, "问答模型尚未就绪。")
+    return scoped_core(core, service, service.owner_ready_document_ids(user_id))
+
+
 @router.post("", status_code=201)
 def create_knowledge_base(body: KnowledgeBaseCreate,
+                          user: AuthContext = Depends(require_csrf),
                           service: KnowledgeService = Depends(get_service)):
     try:
-        return service.create_kb(body.name, body.description)
+        return service.create_kb(body.name, body.description, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
 
 
 @router.get("")
-def list_knowledge_bases(service: KnowledgeService = Depends(get_service)):
-    return service.list_kbs()
+def list_knowledge_bases(user: AuthContext = Depends(require_user),
+                         service: KnowledgeService = Depends(get_service)):
+    return service.list_kbs(user.user_id)
 
 
 @router.get("/{kb_id}")
-def get_knowledge_base(kb_id: str, service: KnowledgeService = Depends(get_service)):
+def get_knowledge_base(kb_id: str, user: AuthContext = Depends(require_user),
+                       service: KnowledgeService = Depends(get_service)):
     try:
-        return service.get_kb(kb_id)
+        return service.get_kb(kb_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
 
 
 @router.get("/{kb_id}/documents")
-def list_documents(kb_id: str, service: KnowledgeService = Depends(get_service)):
+def list_documents(kb_id: str, user: AuthContext = Depends(require_user),
+                   service: KnowledgeService = Depends(get_service)):
     try:
-        return service.list_documents(kb_id)
+        return service.list_documents(kb_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
 
 
 @router.post("/{kb_id}/documents", status_code=201)
 async def upload_document(kb_id: str, file: UploadFile = File(...),
+                          user: AuthContext = Depends(require_csrf),
                           service: KnowledgeService = Depends(get_service)):
     try:
         content = await file.read(MAX_FILE_BYTES + 1)
-        return await service.upload(kb_id, file.filename or "", content)
+        return await service.upload(kb_id, file.filename or "", content, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
     finally:
@@ -105,27 +133,30 @@ async def upload_document(kb_id: str, file: UploadFile = File(...),
 
 @router.delete("/{kb_id}/documents/{document_id}", status_code=204)
 def delete_document(kb_id: str, document_id: str,
+                    user: AuthContext = Depends(require_csrf),
                     service: KnowledgeService = Depends(get_service)):
     try:
-        service.delete_document(kb_id, document_id)
+        service.delete_document(kb_id, document_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
 
 
 @router.post("/{kb_id}/documents/{document_id}/reindex")
 async def reindex_document(kb_id: str, document_id: str,
+                           user: AuthContext = Depends(require_csrf),
                            service: KnowledgeService = Depends(get_service)):
     try:
-        return await service.reindex_document(kb_id, document_id)
+        return await service.reindex_document(kb_id, document_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
 
 
 @router.post("/{kb_id}/ask")
 async def ask_knowledge_base(kb_id: str, body: KnowledgeAsk, request: Request,
+                             user: AuthContext = Depends(require_csrf),
                              service: KnowledgeService = Depends(get_service)):
     try:
-        ready_ids = service.ready_document_ids(kb_id)
+        ready_ids = service.ready_document_ids(kb_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
     if not ready_ids:
@@ -133,18 +164,9 @@ async def ask_knowledge_base(kb_id: str, body: KnowledgeAsk, request: Request,
     core = getattr(request.app.state, "rag_core", None)
     if core is None:
         raise HTTPException(503, "问答模型尚未就绪。")
-    store = QdrantVectorStore(
-        service.vectors.client, service.vectors.collection, kb_id, ready_ids
-    )
-    scoped_core = RAGCore(
-        embedder=core.embedder, vectorstore=store,
-        retriever=SimpleRetriever(core.embedder, store),
-        prompt_builder=core.prompt_builder, llm=core.llm,
-        reranker=core.reranker, aggregator=core.aggregator,
-        top_k=core.top_k, enable_answer_aware=core.enable_answer_aware,
-    )
+    scoped_answer_core = scoped_core(core, service, ready_ids, kb_id)
     try:
-        result = await scoped_core.answer(body.query)
+        result = await scoped_answer_core.answer(body.query)
     except APIError as exc:
         raise HTTPException(
             502, "模型服务调用失败，请检查模型名称、请求参数和服务状态。"

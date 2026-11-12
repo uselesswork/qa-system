@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import httpx
 
-from app.main import ChatRequest, app, ask_stream, chat
+from app.main import app, ask_stream
+from app.api.auth import require_csrf, require_user
+from app.api.chat import get_repository
+from app.api.knowledge import get_service
+from src.auth.service import AuthContext
+from fastapi import Request
+import importlib
 from src.aggregators.answer_aware_aggregator import AnswerAwareAggregator
 from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 from src.aggregators.schemas import AggregatedAnswer, EvidenceChunk
@@ -97,12 +103,16 @@ def test_plain_answer_generates_once():
     assert llm.generate_calls == ["Q: question"]
 
 
-def test_stream_returns_answer_and_evidence_from_one_run():
+def test_stream_returns_answer_and_evidence_from_one_run(monkeypatch):
     async def collect():
         aggregator = FakeAggregator()
         core, retriever, llm = make_core(aggregator)
         app.state.rag_core = core
-        response = await ask_stream("question")
+        monkeypatch.setattr(importlib.import_module("app.main"), "user_core", lambda *_: core)
+        response = await ask_stream(
+            "question", Request({"type": "http", "app": app}),
+            AuthContext("u", "user", "csrf"), object()
+        )
         events = []
         async for data in response.body_iterator:
             events.append(json.loads(data.removeprefix("data: ")))
@@ -156,7 +166,7 @@ def test_failed_chat_does_not_record_half_turn():
     assert memory.get("session") == []
 
 
-def test_chat_api_records_complete_turn_and_evidence():
+def test_chat_service_records_complete_turn_and_evidence():
     class IdentityRewriter:
         async def rewrite(self, query, history):
             return query
@@ -165,10 +175,10 @@ def test_chat_api_records_complete_turn_and_evidence():
     memory = ChatMemory()
     app.state.chat_service = ChatService(core, IdentityRewriter(), memory)
 
-    payload = asyncio.run(chat(ChatRequest(session_id="session", message="question")))
+    payload = asyncio.run(app.state.chat_service.chat("session", "question"))
 
-    assert payload["answer"] == "aggregated answer"
-    assert payload["evidence"][0]["source"] == "doc.md"
+    assert payload.assistant_message.content == "aggregated answer"
+    assert payload.evidence[0].source == "doc.md"
     assert [message.role for message in memory.get("session")] == ["user", "assistant"]
     assert retriever.calls == [("question", 6)]
 
@@ -257,11 +267,17 @@ def test_http_routes_keep_their_response_contract(monkeypatch):
     aggregator = FakeAggregator()
     core, retriever, _ = make_core(aggregator)
     monkeypatch.setattr(app.state, "rag_core", core, raising=False)
-    monkeypatch.setattr(
-        app.state, "chat_service",
-        ChatService(core, IdentityRewriter(), ChatMemory()),
-        raising=False,
-    )
+    monkeypatch.setattr(importlib.import_module("app.main"), "user_core", lambda *_: core)
+    monkeypatch.setattr(app.state, "query_rewriter", IdentityRewriter(), raising=False)
+    class FakeRepository:
+        def history(self, user_id, session_id):
+            return []
+        def append_turn(self, *args):
+            pass
+    app.dependency_overrides[require_user] = lambda: AuthContext("u", "user", "csrf")
+    app.dependency_overrides[require_csrf] = lambda: AuthContext("u", "user", "csrf")
+    app.dependency_overrides[get_repository] = lambda: FakeRepository()
+    app.dependency_overrides[get_service] = lambda: object()
 
     async def run():
         transport = httpx.ASGITransport(app=app)
@@ -273,7 +289,10 @@ def test_http_routes_keep_their_response_contract(monkeypatch):
             stream_response = await client.get("/ask/stream", params={"query": "question"})
         return ask_response, chat_response, stream_response
 
-    ask_response, chat_response, stream_response = asyncio.run(run())
+    try:
+        ask_response, chat_response, stream_response = asyncio.run(run())
+    finally:
+        app.dependency_overrides.clear()
 
     assert ask_response.status_code == chat_response.status_code == stream_response.status_code == 200
     assert ask_response.json()["evidence"][0]["source"] == "doc.md"

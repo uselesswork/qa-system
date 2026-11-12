@@ -1,16 +1,23 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, StreamingResponse
 import json
+from openai import APIError
 
 from app.rag_app import build_rag_core
 from app.api.knowledge import router as knowledge_router
-from src.chat.memory import ChatMemory
-from src.chat.service import ChatService, LLMQueryRewriter
+from app.api.knowledge import get_service, user_core
+from app.api.auth import router as auth_router, require_csrf, require_user
+from app.api.chat import router as chat_router, get_repository
+from src.auth.service import AuthContext
+from src.chat.persistent import PersistentChatService
+from src.chat.repository import ChatNotFound, ChatRepository
+from src.knowledge.service import KnowledgeService
+from src.chat.service import LLMQueryRewriter
 
 
 class AskRequest(BaseModel):
@@ -27,11 +34,7 @@ async def lifespan(app: FastAPI):
     rag_core = await build_rag_core()
 
     app.state.rag_core = rag_core
-    app.state.chat_service = ChatService(
-        rag_core=rag_core,
-        rewriter=LLMQueryRewriter(rag_core.llm, max_turns=5),
-        memory=ChatMemory(max_turns=10),
-    )
+    app.state.query_rewriter = LLMQueryRewriter(rag_core.llm, max_turns=5)
     print("[Lifespan] RAG system ready")
 
     yield
@@ -42,6 +45,11 @@ async def lifespan(app: FastAPI):
         app.state.knowledge_engine.dispose()
         app.state.knowledge_service = None
         app.state.knowledge_engine = None
+    auth_engine = getattr(app.state, "auth_engine", None)
+    if auth_engine is not None:
+        auth_engine.dispose()
+        app.state.auth_service = None
+        app.state.auth_engine = None
     print("[Lifespan] shutdown")
 
 
@@ -50,6 +58,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 app.include_router(knowledge_router)
+app.include_router(auth_router)
+app.include_router(chat_router)
 
 
 def serialize_evidence(items):
@@ -70,9 +80,14 @@ def serialize_metadata(metadata):
 
 
 @app.post("/ask")
-async def ask(req: AskRequest):
-    rag_core = app.state.rag_core
-    result = await rag_core.answer(req.query)
+async def ask(req: AskRequest, request: Request,
+              user: AuthContext = Depends(require_csrf),
+              knowledge: KnowledgeService = Depends(get_service)):
+    rag_core = user_core(request, knowledge, user.user_id)
+    try:
+        result = await rag_core.answer(req.query)
+    except APIError as exc:
+        raise HTTPException(502, "模型服务调用失败，请检查模型配置与服务状态。") from exc
 
     return {
         "answer": result.answer,
@@ -82,24 +97,30 @@ async def ask(req: AskRequest):
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
-    turn = await app.state.chat_service.chat(req.session_id, req.message)
-    return {
-        "session_id": req.session_id,
-        "user_message": turn.user_message.content,
-        "answer": turn.assistant_message.content,
-        "rewritten_query": turn.rewritten_query,
-        "evidence": serialize_evidence(turn.evidence),
-        "metadata": serialize_metadata(turn.metadata),
-    }
+async def chat(req: ChatRequest, request: Request,
+               user: AuthContext = Depends(require_csrf),
+               repository: ChatRepository = Depends(get_repository),
+               knowledge: KnowledgeService = Depends(get_service)):
+    service = PersistentChatService(repository, user_core(request, knowledge, user.user_id),
+                                    app.state.query_rewriter)
+    try:
+        return await service.chat(user.user_id, req.session_id, req.message)
+    except ChatNotFound as exc:
+        raise HTTPException(404, "会话不存在。") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except APIError as exc:
+        raise HTTPException(502, "模型服务调用失败，请检查模型配置与服务状态。") from exc
 
 
 @app.get("/ask/stream")
-async def ask_stream(query: str):
+async def ask_stream(query: str, request: Request,
+                     user: AuthContext = Depends(require_csrf),
+                     knowledge: KnowledgeService = Depends(get_service)):
     """
     使用 SSE 流式返回 answer + 最终 evidence/metadata
     """
-    rag_core = app.state.rag_core
+    rag_core = user_core(request, knowledge, user.user_id)
 
     async def event_generator():
         async for event in rag_core.stream_answer_with_result(query):

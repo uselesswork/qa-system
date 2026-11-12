@@ -97,7 +97,7 @@ def test_legacy_retriever_still_works_with_reranker():
     assert asyncio.run(core.answer("问题")).answer == "回答"
 
 
-def test_build_rag_core_indexes_without_temporary_store_fields(tmp_path, monkeypatch):
+def test_build_rag_core_does_not_index_legacy_public_documents(tmp_path, monkeypatch):
     folder = tmp_path / "data" / "model12"
     folder.mkdir(parents=True)
     (folder / "one.md").write_text("# 标题\n正文", encoding="utf-8")
@@ -123,8 +123,8 @@ def test_build_rag_core_indexes_without_temporary_store_fields(tmp_path, monkeyp
 
     core = asyncio.run(rag_app.build_rag_core())
 
-    assert len(core.vectorstore._chunks) == 1
-    assert core.vectorstore._chunks[0].metadata["heading"] == "标题"
+    assert core.vectorstore._chunks == []
+    assert core.embedder.indexed == []
     assert not hasattr(core.vectorstore, "_pending_chunks")
     assert not hasattr(core.vectorstore, "_embedder")
 

@@ -39,15 +39,8 @@ async def build_rag_core() -> RAGCore:
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("缺少 OPENAI_API_KEY：请在项目根目录 .env 中配置。")
 
-    all_chunks = load_chunks(BASE_DIR / "data" / "model12")
-    if not all_chunks:
-        raise RuntimeError("data/model12 中没有可索引的 Markdown 内容。")
-
-    print(f"[Semantic Splitter] Total chunks: {len(all_chunks)}")
-
     embedder = OpenAIEmbedding()
     store = InMemoryVectorStore()
-    store.add(await embedder.embed(all_chunks))
 
     retriever = SimpleRetriever(embedder=embedder, vectorstore=store)
     reranker = EmbeddingReranker()

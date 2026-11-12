@@ -56,17 +56,21 @@ class QdrantVectorStore(BaseVectorStore):
         self.client.upsert(collection_name=self.collection, points=points, wait=True)
 
     def search(self, query_vector: np.ndarray, top_k: int = 5) -> list[SearchResult]:
-        if not self.knowledge_base_id or not self.ready_document_ids:
+        if not self.ready_document_ids:
             return []
         if not self.client.collection_exists(self.collection):
             return []
+        conditions = [models.FieldCondition(
+            key="document_id", match=models.MatchAny(any=self.ready_document_ids)
+        )]
+        if self.knowledge_base_id:
+            conditions.append(models.FieldCondition(
+                key="knowledge_base_id", match=models.MatchValue(value=self.knowledge_base_id)
+            ))
         points = self.client.query_points(
             collection_name=self.collection,
             query=np.asarray(query_vector).tolist(),
-            query_filter=models.Filter(must=[
-                models.FieldCondition(key="knowledge_base_id", match=models.MatchValue(value=self.knowledge_base_id)),
-                models.FieldCondition(key="document_id", match=models.MatchAny(any=self.ready_document_ids)),
-            ]),
+            query_filter=models.Filter(must=conditions),
             with_payload=True,
             with_vectors=True,
             limit=top_k,

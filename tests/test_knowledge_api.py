@@ -6,6 +6,7 @@ import numpy as np
 from sqlalchemy import create_engine, event, select
 
 from app.main import app
+from src.auth.service import AuthService
 from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggregator
 from src.db import Base, Chunk, Document
 from src.db.session import create_session_factory
@@ -56,6 +57,19 @@ def make_service(tmp_path):
     return engine, service
 
 
+async def login_client(client, engine):
+    app.state.auth_service = AuthService(create_session_factory(engine))
+    registered = await client.post("/auth/register", json={
+        "username": "tester", "password": "a-long-test-password"
+    })
+    assert registered.status_code == 201, registered.text
+    logged_in = await client.post("/auth/login", json={
+        "username": "tester", "password": "a-long-test-password"
+    })
+    assert logged_in.status_code == 200, logged_in.text
+    client.headers["X-CSRF-Token"] = logged_in.json()["csrf_token"]
+
+
 def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
     async def scenario():
         engine, service = make_service(tmp_path)
@@ -73,6 +87,7 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
         )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await login_client(client, engine)
             first = (await client.post("/knowledge-bases", json={"name": "甲库"})).json()["id"]
             second = (await client.post("/knowledge-bases", json={"name": "乙库"})).json()["id"]
             assert len((await client.get("/knowledge-bases")).json()) == 2
@@ -106,6 +121,7 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
             engine.dispose()
             engine, restarted = make_service(tmp_path)
             app.state.knowledge_service = restarted
+            app.state.auth_service = AuthService(create_session_factory(engine))
             answer = await client.post(f"/knowledge-bases/{first}/ask", json={"query": "重启后"})
             assert answer.status_code == 200, answer.text
             assert "甲库独有证据" in answer.json()["answer"]
@@ -131,6 +147,7 @@ def test_upload_validation_and_index_failure(tmp_path):
         app.state.knowledge_service = service
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await login_client(client, engine)
             kb_id = (await client.post("/knowledge-bases", json={"name": "测试"})).json()["id"]
             bad = await client.post(f"/knowledge-bases/{kb_id}/documents",
                                     files={"file": ("evil.exe", b"abc")})
