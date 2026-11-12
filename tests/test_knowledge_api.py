@@ -85,12 +85,27 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
                 embedder=FakeEmbedding(), max_chunks=3,
             ),
         )
+        class IdentityRewriter:
+            async def rewrite(self, query, history):
+                return query
+        app.state.query_rewriter = IdentityRewriter()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             await login_client(client, engine)
             first = (await client.post("/knowledge-bases", json={"name": "甲库"})).json()["id"]
             second = (await client.post("/knowledge-bases", json={"name": "乙库"})).json()["id"]
             assert len((await client.get("/knowledge-bases")).json()) == 2
+
+            empty_session = await client.post(
+                "/chat/sessions", json={"knowledge_base_id": first}
+            )
+            assert empty_session.status_code == 201, empty_session.text
+            empty_id = empty_session.json()["id"]
+            no_documents = await client.post(
+                f"/chat/sessions/{empty_id}/messages", json={"message": "现在能回答吗"}
+            )
+            assert no_documents.status_code == 409
+            assert (await client.get(f"/chat/sessions/{empty_id}")).json()["messages"] == []
 
             first_doc = await client.post(
                 f"/knowledge-bases/{first}/documents",
@@ -110,6 +125,28 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
             )
             assert duplicate.status_code == 409
             assert len((await client.get(f"/knowledge-bases/{first}/documents")).json()) == 1
+
+            first_session = await client.post(
+                "/chat/sessions", json={"knowledge_base_id": first}
+            )
+            second_session = await client.post(
+                "/chat/sessions", json={"knowledge_base_id": second}
+            )
+            assert first_session.status_code == second_session.status_code == 201
+            for session_response, expected, excluded in (
+                (first_session, "甲库独有证据", "乙库独有证据"),
+                (second_session, "乙库独有证据", "甲库独有证据"),
+            ):
+                session_id = session_response.json()["id"]
+                turn = await client.post(
+                    f"/chat/sessions/{session_id}/messages", json={"message": "什么证据"}
+                )
+                assert turn.status_code == 200, turn.text
+                assert expected in turn.json()["answer"]
+                assert excluded not in turn.json()["answer"]
+                saved = (await client.get(f"/chat/sessions/{session_id}")).json()
+                assert saved["knowledge_base_id"] == session_response.json()["knowledge_base_id"]
+                assert len(saved["messages"]) == 2
 
             answer = await client.post(f"/knowledge-bases/{first}/ask", json={"query": "什么证据"})
             assert answer.status_code == 200, answer.text

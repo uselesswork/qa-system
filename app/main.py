@@ -12,7 +12,7 @@ from app.rag_app import build_rag_core
 from app.api.knowledge import router as knowledge_router
 from app.api.knowledge import get_service, user_core
 from app.api.auth import router as auth_router, require_csrf, require_user
-from app.api.chat import router as chat_router, get_repository
+from app.api.chat import router as chat_router, get_repository, session_core
 from src.auth.service import AuthContext
 from src.chat.persistent import PersistentChatService
 from src.chat.repository import ChatNotFound, ChatRepository
@@ -101,9 +101,11 @@ async def chat(req: ChatRequest, request: Request,
                user: AuthContext = Depends(require_csrf),
                repository: ChatRepository = Depends(get_repository),
                knowledge: KnowledgeService = Depends(get_service)):
-    service = PersistentChatService(repository, user_core(request, knowledge, user.user_id),
-                                    app.state.query_rewriter)
     try:
+        service = PersistentChatService(
+            repository, session_core(request, knowledge, repository, user.user_id,
+                                     req.session_id), app.state.query_rewriter,
+        )
         return await service.chat(user.user_id, req.session_id, req.message)
     except ChatNotFound as exc:
         raise HTTPException(404, "会话不存在。") from exc

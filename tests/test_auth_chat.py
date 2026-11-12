@@ -61,7 +61,7 @@ def test_auth_ownership_chat_persistence_and_csrf(tmp_path, monkeypatch):
         monkeypatch.setattr(app.state, "auth_service", AuthService(factory), raising=False)
         monkeypatch.setattr(app.state, "knowledge_service", knowledge, raising=False)
         monkeypatch.setattr(app.state, "query_rewriter", FakeRewriter(), raising=False)
-        monkeypatch.setattr(chat_api, "user_core", lambda *_: FakeRAG())
+        monkeypatch.setattr(chat_api, "session_core", lambda *_: FakeRAG())
         legacy = knowledge.create_kb("迁移前演示库", None)
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as alice, \
@@ -71,6 +71,9 @@ def test_auth_ownership_chat_persistence_and_csrf(tmp_path, monkeypatch):
             await sign_in(bob, "bob")
             assert (await alice.get("/knowledge-bases")).json() == []
             assert (await bob.get(f"/knowledge-bases/{legacy['id']}")).status_code == 404
+            assert (await alice.post(
+                "/chat/sessions", json={"knowledge_base_id": legacy["id"]}
+            )).status_code == 404
             own = await alice.post("/knowledge-bases", json={"name": "Alice 私有库"})
             assert own.status_code == 201, own.text
             kb_id = own.json()["id"]
@@ -80,9 +83,11 @@ def test_auth_ownership_chat_persistence_and_csrf(tmp_path, monkeypatch):
             assert (await bob.post(f"/knowledge-bases/{kb_id}/ask", json={"query": "秘密"})).status_code == 404
             assert (await alice.post("/knowledge-bases", json={"name": "无 CSRF"},
                                      headers={"X-CSRF-Token": "wrong"})).status_code == 403
-            created = await alice.post("/chat/sessions")
+            created = await alice.post("/chat/sessions", json={"knowledge_base_id": kb_id})
             assert created.status_code == 201, created.text
             session_id = created.json()["id"]
+            assert created.json()["knowledge_base_id"] == kb_id
+            assert (await bob.post("/chat/sessions", json={"knowledge_base_id": kb_id})).status_code == 404
             first = await alice.post(f"/chat/sessions/{session_id}/messages",
                                      json={"message": "第一问"})
             assert first.status_code == 200, first.text

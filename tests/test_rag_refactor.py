@@ -268,6 +268,7 @@ def test_http_routes_keep_their_response_contract(monkeypatch):
     core, retriever, _ = make_core(aggregator)
     monkeypatch.setattr(app.state, "rag_core", core, raising=False)
     monkeypatch.setattr(importlib.import_module("app.main"), "user_core", lambda *_: core)
+    monkeypatch.setattr(importlib.import_module("app.main"), "session_core", lambda *_: core)
     monkeypatch.setattr(app.state, "query_rewriter", IdentityRewriter(), raising=False)
     class FakeRepository:
         def history(self, user_id, session_id):

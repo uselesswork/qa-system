@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from src.chat.schemas import ChatMessage
-from src.db import ChatMessageRecord, ChatSession
+from src.db import ChatMessageRecord, ChatSession, KnowledgeBase
 
 
 class ChatNotFound(Exception):
@@ -23,6 +23,7 @@ class ChatRepository:
     @staticmethod
     def session_json(item: ChatSession) -> dict:
         return {"id": item.id, "title": item.title,
+                "knowledge_base_id": item.knowledge_base_id,
                 "created_at": item.created_at, "updated_at": item.updated_at}
 
     @staticmethod
@@ -32,12 +33,28 @@ class ChatRepository:
                 "evidence": json.loads(item.evidence_json or "[]"),
                 "metadata": json.loads(item.metadata_json or "{}")}
 
-    def create(self, user_id: str) -> dict:
+    def create(self, user_id: str, knowledge_base_id: str | None = None) -> dict:
         with self.sessions.begin() as session:
-            item = ChatSession(user_id=user_id, title="新对话")
+            if knowledge_base_id is not None:
+                kb = session.get(KnowledgeBase, knowledge_base_id)
+                if kb is None or kb.owner_id != user_id:
+                    raise ChatNotFound
+            item = ChatSession(user_id=user_id, knowledge_base_id=knowledge_base_id,
+                               title="新对话")
             session.add(item)
             session.flush()
             return self.session_json(item)
+
+    def scope(self, user_id: str, session_id: str) -> str | None:
+        with self.sessions() as session:
+            item = session.get(ChatSession, session_id)
+            if item is None or item.user_id != user_id:
+                raise ChatNotFound
+            if item.knowledge_base_id is not None:
+                kb = session.get(KnowledgeBase, item.knowledge_base_id)
+                if kb is None or kb.owner_id != user_id:
+                    raise ChatNotFound
+            return item.knowledge_base_id
 
     def list(self, user_id: str) -> list[dict]:
         with self.sessions() as session:
