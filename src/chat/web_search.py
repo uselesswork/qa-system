@@ -13,7 +13,7 @@ class WebSearchUnavailable(Exception):
 class WebSearchService:
     def __init__(self, client: AsyncOpenAI | None = None, model: str | None = None):
         self.client = client or AsyncOpenAI()
-        self.model = model or os.getenv("WEB_SEARCH_MODEL", "gpt-6-astra")
+        self.model = model or os.getenv("WEB_SEARCH_MODEL", "gpt-6-luna")
 
     async def search(self, question: str) -> dict:
         response = await self.client.responses.create(
