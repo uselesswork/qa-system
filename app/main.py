@@ -50,6 +50,10 @@ async def lifespan(app: FastAPI):
         auth_engine.dispose()
         app.state.auth_service = None
         app.state.auth_engine = None
+    web_search_service = getattr(app.state, "web_search_service", None)
+    if web_search_service is not None:
+        await web_search_service.client.close()
+        app.state.web_search_service = None
     print("[Lifespan] shutdown")
 
 

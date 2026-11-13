@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from openai import APIError
 from pydantic import BaseModel
+from typing import Literal
 
 from app.api.auth import get_auth_service, require_csrf, require_user
 from app.api.knowledge import get_service, scoped_core, user_core
@@ -10,6 +11,7 @@ from src.auth.service import AuthContext, AuthService
 from src.knowledge.service import KnowledgeError, KnowledgeService
 from src.chat.persistent import PersistentChatService
 from src.chat.repository import ChatNotFound, ChatRepository
+from src.chat.web_search import WebSearchService, WebSearchUnavailable
 
 
 router = APIRouter(prefix="/chat/sessions", tags=["chat-sessions"])
@@ -17,6 +19,7 @@ router = APIRouter(prefix="/chat/sessions", tags=["chat-sessions"])
 
 class MessageIn(BaseModel):
     message: str
+    mode: Literal["knowledge", "web"] = "knowledge"
 
 
 class SessionIn(BaseModel):
@@ -25,6 +28,14 @@ class SessionIn(BaseModel):
 
 def get_repository(service: AuthService = Depends(get_auth_service)) -> ChatRepository:
     return ChatRepository(service.sessions)
+
+
+def get_web_search(request: Request) -> WebSearchService:
+    service = getattr(request.app.state, "web_search_service", None)
+    if service is None:
+        service = WebSearchService()
+        request.app.state.web_search_service = service
+    return service
 
 
 @router.post("", status_code=201)
@@ -73,10 +84,27 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
                        user: AuthContext = Depends(require_csrf),
                        repository: ChatRepository = Depends(get_repository),
                        knowledge: KnowledgeService = Depends(get_service)):
-    rewriter = getattr(request.app.state, "query_rewriter", None)
-    if rewriter is None:
-        raise HTTPException(503, "问答服务尚未就绪。")
     try:
+        if body.mode == "web":
+            question = body.message.strip()
+            if not question or len(question) > 2000:
+                raise HTTPException(400, "联网搜索问题不能为空或超过 2000 字符。")
+            kb_id = repository.scope(user.user_id, session_id)
+            if kb_id is None:
+                raise HTTPException(409, "旧版全库会话不能使用联网搜索。")
+            if knowledge.ready_document_ids(kb_id, user.user_id):
+                raise HTTPException(409, "当前知识库已有可检索文档，请使用知识库问答。")
+            result = await get_web_search(request).search(question)
+            repository.append_turn(
+                user.user_id, session_id, question, result["answer"], question,
+                result["evidence"], result["metadata"],
+            )
+            return {"session_id": session_id, "user_message": question,
+                    "answer": result["answer"], "rewritten_query": question,
+                    "evidence": result["evidence"], "metadata": result["metadata"]}
+        rewriter = getattr(request.app.state, "query_rewriter", None)
+        if rewriter is None:
+            raise HTTPException(503, "问答服务尚未就绪。")
         service = PersistentChatService(
             repository, session_core(request, knowledge, repository, user.user_id, session_id),
             rewriter,
@@ -84,6 +112,10 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
         return await service.chat(user.user_id, session_id, body.message)
     except ChatNotFound as exc:
         raise HTTPException(404, "会话不存在。") from exc
+    except WebSearchUnavailable as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except KnowledgeError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except APIError as exc:
