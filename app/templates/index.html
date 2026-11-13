@@ -344,7 +344,7 @@
             card.append(url ? webLink(url, `#${item.rank}　${item.title || url}`)
               : element("span", "", "无效网页来源"));
           } else {
-            card.append(element("div", "evidence-head", `#${item.rank}　相关度 ${item.score}　${item.source || "未知来源"}　${item.chunk_id || ""}`));
+            card.append(element("div", "evidence-head", `#${item.rank}　${item.source || "未知来源"}　${item.chunk_id || ""}`));
             card.append(element("div", "evidence-content", item.content));
           }
           details.append(card);

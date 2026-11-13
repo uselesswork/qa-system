@@ -5,6 +5,7 @@ from .schemas import ChatMessage, ChatTurn, Evidence
 from .rewriter import BaseQueryRewriter
 from src.rag.rag_core import RAGCore
 from ..llms.openai_chat import OpenAIChatLLM
+from src.utils.query_subject import mentioned_dynasties
 
 
 class LLMQueryRewriter(BaseQueryRewriter):
@@ -14,6 +15,8 @@ class LLMQueryRewriter(BaseQueryRewriter):
         self.max_turns = max_turns
 
     async def rewrite(self, query: str, history: List[ChatMessage]) -> str:
+        if not history:
+            return query.strip()
         history = history[-self.max_turns * 2:]
 
         history_text = "\n".join(
@@ -35,22 +38,19 @@ class LLMQueryRewriter(BaseQueryRewriter):
             当前用户问题：
             {query}
             
-            请遵循以下规则生成检索 query：
-            1. 如果是第一轮：生成“定义 / 原理”型检索 query
-            2. 如果是追问失败 / 局限：生成“失败机制 / 对抗性情况”型检索 query
-            3. 如果是方法对比：生成“对比 / 解决机制”型检索 query
-            4. 不要复述用户问题
-            5. 不要给出答案，只输出一条检索 query
-            
-            输出格式（严格）：
-            <REWRITTEN_QUERY>
+            请将当前问题改写为一条可独立检索的问题。
+            保留当前问题中的专有名词、人物、朝代、时间、限定条件和否定词。
+            历史只能用来补全“它”“当时”等指代，不能改变当前问题的主题。
+            不要添加用户未提及的书名、史料或事实。
+            只输出问题正文，不要输出标签、占位符、解释或答案。
         """
 
         result = await self.llm.generate(prompt)
         rewritten = result.content.strip()
 
-        # 防御：空 rewrite 就 fallback
-        if not rewritten:
+        # 模型有时把输出示例原样返回，不能将占位符送入检索。
+        if (not rewritten or "<REWRITTEN_QUERY>" in rewritten
+                or not mentioned_dynasties(query) <= mentioned_dynasties(rewritten)):
             return query
 
         return rewritten

@@ -16,7 +16,8 @@ from src.aggregators.answer_multitude_aggregator import CrossDocumentAnswerAggre
 from src.aggregators.schemas import AggregatedAnswer, EvidenceChunk
 from src.aggregators.simple_aggregator import AnswerAggregator
 from src.chat.memory import ChatMemory
-from src.chat.service import ChatService
+from src.chat.schemas import ChatMessage
+from src.chat.service import ChatService, LLMQueryRewriter
 from src.rag.rag_core import RAGCore
 from src.rag.result import RAGResult
 from src.retrievers.base import RetrievalBatch
@@ -199,7 +200,17 @@ def test_aggregator_contracts_separate_answers_from_evidence_only():
 
     async def run():
         evidence = await AnswerAggregator(max_chunks=1).aggregate("question", [result])
-        llm = FakeLLM()
+        class GroundedLLM(FakeLLM):
+            async def generate(self, prompt):
+                self.generate_calls.append(prompt)
+                if "知识库证据审核员" in prompt:
+                    return SimpleNamespace(content=(
+                        '{"supported": true, "quotes": '
+                        '[{"index": 1, "quote": "source text"}]}'
+                    ), metadata={})
+                return SimpleNamespace(content="plain answer", metadata={})
+
+        llm = GroundedLLM()
         answer_aggregator = AnswerAwareAggregator(
             llm=llm,
             prompt_builder=SimpleNamespace(build=lambda query, chunks: "prompt"),
@@ -214,6 +225,92 @@ def test_aggregator_contracts_separate_answers_from_evidence_only():
     assert len(evidence) == 1
     assert answer.answer == "plain answer"
     assert answer.evidence_chunks[0].source == "doc.md"
+
+
+def test_unrelated_chunks_are_not_used_to_answer_or_shown_as_evidence():
+    result = SearchResult(
+        SimpleNamespace(content="1368年朱元璋建立明朝", vector=[1.0, 0.0],
+                        metadata={"source": "明朝.md", "chunk_id": 1}),
+        0.9,
+    )
+
+    class JudgingLLM(FakeLLM):
+        async def generate(self, prompt):
+            self.generate_calls.append(prompt)
+            return SimpleNamespace(content='{"supported": false, "quotes": []}', metadata={})
+
+    llm = JudgingLLM()
+    aggregator = CrossDocumentAnswerAggregator(llm, None, None)
+    answer = asyncio.run(aggregator.aggregate("唐朝何时建立？", [result]))
+    assert "资料" in answer.answer
+    assert answer.evidence_chunks == []
+    assert len(llm.generate_calls) == 1  # 没有证据时不生成答案
+
+
+def test_evidence_judge_must_quote_the_retrieved_document():
+    result = SearchResult(
+        SimpleNamespace(content="1368年朱元璋建立明朝", vector=[1.0, 0.0],
+                        metadata={"source": "明朝.md", "chunk_id": 1}),
+        0.9,
+    )
+
+    class InventingLLM(FakeLLM):
+        async def generate(self, prompt):
+            self.generate_calls.append(prompt)
+            return SimpleNamespace(content=(
+                '{"supported": true, "quotes": '
+                '[{"index": 1, "quote": "618年李渊建立唐朝"}]}'
+            ), metadata={})
+
+    llm = InventingLLM()
+    answer = asyncio.run(CrossDocumentAnswerAggregator(llm, None, None).aggregate(
+        "唐朝何时建立？", [result]
+    ))
+    assert answer.evidence_chunks == []
+    assert len(llm.generate_calls) == 1
+
+
+def test_explicit_dynasty_mismatch_still_abstains_if_judge_selects_ming_quote():
+    result = SearchResult(
+        SimpleNamespace(content="1368年朱元璋建立明朝", vector=[1.0, 0.0],
+                        metadata={"source": "明朝.md", "chunk_id": 1}),
+        0.9,
+    )
+
+    class OverlyPermissiveLLM(FakeLLM):
+        async def generate(self, prompt):
+            self.generate_calls.append(prompt)
+            return SimpleNamespace(content=(
+                '{"supported": true, "quotes": '
+                '[{"index": 1, "quote": "朱元璋建立明朝"}]}'
+            ), metadata={})
+
+    llm = OverlyPermissiveLLM()
+    answer = asyncio.run(CrossDocumentAnswerAggregator(llm, None, None).aggregate(
+        "唐朝何时建立？", [result]
+    ))
+    assert answer.evidence_chunks == []
+    assert len(llm.generate_calls) == 1
+
+
+def test_rewriter_does_not_search_literal_placeholder():
+    llm = FakeLLM()
+    async def placeholder(_prompt):
+        return SimpleNamespace(content="<REWRITTEN_QUERY>", metadata={})
+    llm.generate = placeholder
+    assert asyncio.run(LLMQueryRewriter(llm).rewrite(
+        "唐朝何时建立？", [ChatMessage(role="user", content="明朝何时建立？")]
+    )) == "唐朝何时建立？"
+
+
+def test_rewriter_cannot_replace_current_dynasty_with_history_subject():
+    llm = FakeLLM()
+    async def wrong_subject(_prompt):
+        return SimpleNamespace(content="明朝何时建立？", metadata={})
+    llm.generate = wrong_subject
+    assert asyncio.run(LLMQueryRewriter(llm).rewrite(
+        "唐朝何时建立？", [ChatMessage(role="user", content="明朝何时建立？")]
+    )) == "唐朝何时建立？"
 
 
 def test_answer_aware_rerank_is_shared_by_plain_and_stream_paths():

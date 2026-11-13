@@ -1,5 +1,6 @@
 from typing import List
 import math
+import json
 
 from src.aggregators.base import BaseAnswerAggregator
 from src.aggregators.schemas import EvidenceChunk, AggregatedAnswer
@@ -8,6 +9,7 @@ from src.embeddings.openai_embedding import OpenAIEmbedding
 from src.llms.openai_chat import OpenAIChatLLM
 from src.prompts.base import BasePromptBuilder
 from src.utils.similarity import cosine_similarity
+from src.utils.query_subject import mentioned_dynasties
 
 
 class CrossDocumentAnswerAggregator(BaseAnswerAggregator):
@@ -41,50 +43,54 @@ class CrossDocumentAnswerAggregator(BaseAnswerAggregator):
         if not results:
             return AggregatedAnswer(answer="未检索到可用资料，无法依据当前知识库回答。", evidence_chunks=[])
 
-        # ==========================================================
-        # Phase 1: 【真正的answer-aware】分析
-        # 先分析各chunk对答案的贡献，再生成答案
-        # ==========================================================
+        # 向量相似度只能召回候选片段，不能证明它们支持答案。先检查是否有
+        # 可在原文中定位的直接证据；没有证据时不要让模型凭常识补全。
+        excerpts = "\n\n".join(
+            f"片段 {index}:\n{item.chunk.content}"
+            for index, item in enumerate(results, 1)
+        )
+        check = await self.llm.generate(f"""
+你是知识库证据审核员。只根据下面的片段判断能否回答问题，不能使用常识或外部知识。
+问题：{query}
 
-        # 对每个chunk进行独立分析
-        chunk_analyses = []
-        for r in results:
-            # 构建单个chunk分析prompt
-            single_chunk_prompt = f"""
-            请分析以下文本片段对于回答问题"{query}"的相关性和重要性：
+{excerpts}
 
-            文本内容：{r.chunk.content}
+若片段没有直接回答问题所需的信息，特别是问题中的人物、朝代、时间或对象与片段不符，返回
+{{"supported": false, "quotes": []}}。
+若可以回答，返回 {{"supported": true, "quotes": [{{"index": 1, "quote": "原文中连续出现的直接证据"}}]}}。
+quote 必须是对应片段中至少 4 个字符的原文连续摘录。只输出 JSON，不要附加说明。
+""".strip())
+        try:
+            verdict = json.loads(check.content.strip())
+            supported = verdict.get("supported") is True
+            selected = []
+            if supported:
+                for citation in verdict.get("quotes", []):
+                    index = citation.get("index")
+                    quote = citation.get("quote")
+                    if (type(index) is int and 1 <= index <= len(results)
+                            and isinstance(quote, str) and len(quote.strip()) >= 4
+                            and quote in results[index - 1].chunk.content
+                            and index not in selected):
+                        selected.append(index)
+        except (AttributeError, TypeError, ValueError):
+            selected = []
+        if not selected:
+            return AggregatedAnswer(
+                answer="当前知识库没有足以回答这个问题的资料。可补充文档，或主动开启联网搜索。",
+                evidence_chunks=[],
+            )
+        results = [results[index - 1] for index in selected]
+        required_dynasties = mentioned_dynasties(query)
+        evidence_text = "\n".join(item.chunk.content for item in results)
+        if any(name not in evidence_text for name in required_dynasties):
+            return AggregatedAnswer(
+                answer="当前知识库没有足以回答这个问题的资料。可补充文档，或主动开启联网搜索。",
+                evidence_chunks=[],
+            )
 
-            请提供：
-            1. 相关性评分 (0-10)
-            2. 信息独特性 (是否提供了其他片段没有的关键信息)
-            3. 信息可靠性 (内容是否可信且有依据)
-            4. 简要分析说明
-            """
-
-            analysis = await self.llm.generate(single_chunk_prompt)
-            chunk_analyses.append({
-                'chunk': r.chunk,
-                'result': r,
-                'analysis': analysis.content
-            })
-
-        # 基于所有分析结果生成全局答案
-        synthesis_prompt = f"""
-        请基于以下多个信息源的分析结果，回答问题："{query}"
-
-        信息源分析结果：
-        """
-
-        for i, item in enumerate(chunk_analyses):
-            synthesis_prompt += f"\n--- 信息源 {i + 1} ---\n"
-            synthesis_prompt += f"内容: {item['chunk'].content}\n"
-            synthesis_prompt += f"分析: {item['analysis']}\n"
-
-        synthesis_prompt += f"""
-        请综合以上所有信息源，生成一个全面、准确且有证据支持的答案。
-        注意解决可能存在的信息冲突，并突出最可靠的信息来源。
-        """
+        # 只把通过检查的片段交给答案模型，避免分析文本引入额外事实。
+        synthesis_prompt = self.prompt_builder.build(query=query, chunks=results)
 
         synthesized_answer = await self.llm.generate(synthesis_prompt)
         synthesized_text = synthesized_answer.content

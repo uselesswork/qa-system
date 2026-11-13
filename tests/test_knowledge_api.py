@@ -28,6 +28,12 @@ class FakeEmbedding:
 
 class FakeLLM:
     async def generate(self, prompt):
+        if "知识库证据审核员" in prompt:
+            quote = "甲库独有证据" if "甲库独有证据" in prompt else "乙库独有证据"
+            return SimpleNamespace(content=(
+                '{"supported": true, "quotes": [{"index": 1, "quote": "'
+                + quote + '"}]}'
+            ), metadata={})
         return SimpleNamespace(content=prompt, metadata={})
 
 
@@ -159,7 +165,7 @@ def test_knowledge_api_persists_filters_reindexes_and_deletes(tmp_path):
             engine, restarted = make_service(tmp_path)
             app.state.knowledge_service = restarted
             app.state.auth_service = AuthService(create_session_factory(engine))
-            answer = await client.post(f"/knowledge-bases/{first}/ask", json={"query": "重启后"})
+            answer = await client.post(f"/knowledge-bases/{first}/ask", json={"query": "什么证据"})
             assert answer.status_code == 200, answer.text
             assert "甲库独有证据" in answer.json()["answer"]
 
