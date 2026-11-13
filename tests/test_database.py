@@ -85,6 +85,9 @@ def test_initial_migration_upgrades_and_downgrades_temp_database(tmp_path, monke
     assert "knowledge_base_id" in {
         column["name"] for column in inspector.get_columns("chat_sessions")
     }
+    assert "session_type" in {
+        column["name"] for column in inspector.get_columns("chat_sessions")
+    }
     engine.dispose()
 
     command.downgrade(config, "base")

@@ -23,7 +23,8 @@ class MessageIn(BaseModel):
 
 
 class SessionIn(BaseModel):
-    knowledge_base_id: str
+    knowledge_base_id: str | None = None
+    session_type: Literal["knowledge", "web"] = "knowledge"
 
 
 def get_repository(service: AuthService = Depends(get_auth_service)) -> ChatRepository:
@@ -41,15 +42,21 @@ def get_web_search(request: Request) -> WebSearchService:
 @router.post("", status_code=201)
 def create_session(body: SessionIn, user: AuthContext = Depends(require_csrf),
                    repository: ChatRepository = Depends(get_repository)):
+    if body.session_type == "web" and body.knowledge_base_id is not None:
+        raise HTTPException(400, "联网专用会话不绑定知识库。")
+    if body.session_type == "knowledge" and body.knowledge_base_id is None:
+        raise HTTPException(400, "知识库会话需要选择知识库。")
     try:
-        return repository.create(user.user_id, body.knowledge_base_id)
+        return repository.create(user.user_id, body.knowledge_base_id, body.session_type)
     except ChatNotFound as exc:
         raise HTTPException(404, "知识库不存在。") from exc
 
 
 def session_core(request: Request, knowledge: KnowledgeService,
                  repository: ChatRepository, user_id: str, session_id: str):
-    kb_id = repository.scope(user_id, session_id)
+    kb_id, session_type = repository.scope_info(user_id, session_id)
+    if session_type == "web":
+        raise HTTPException(409, "此会话仅用于联网搜索，请开启联网搜索按钮。")
     if kb_id is None:
         return user_core(request, knowledge, user_id)  # 迁移前创建的全库会话
     try:
@@ -82,18 +89,13 @@ def get_session(session_id: str, user: AuthContext = Depends(require_user),
 @router.post("/{session_id}/messages")
 async def send_message(session_id: str, body: MessageIn, request: Request,
                        user: AuthContext = Depends(require_csrf),
-                       repository: ChatRepository = Depends(get_repository),
-                       knowledge: KnowledgeService = Depends(get_service)):
+                       repository: ChatRepository = Depends(get_repository)):
     try:
         if body.mode == "web":
             question = body.message.strip()
             if not question or len(question) > 2000:
                 raise HTTPException(400, "联网搜索问题不能为空或超过 2000 字符。")
-            kb_id = repository.scope(user.user_id, session_id)
-            if kb_id is None:
-                raise HTTPException(409, "旧版全库会话不能使用联网搜索。")
-            if knowledge.ready_document_ids(kb_id, user.user_id):
-                raise HTTPException(409, "当前知识库已有可检索文档，请使用知识库问答。")
+            repository.scope_info(user.user_id, session_id)
             result = await get_web_search(request).search(question)
             repository.append_turn(
                 user.user_id, session_id, question, result["answer"], question,
@@ -106,7 +108,8 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
         if rewriter is None:
             raise HTTPException(503, "问答服务尚未就绪。")
         service = PersistentChatService(
-            repository, session_core(request, knowledge, repository, user.user_id, session_id),
+            repository, session_core(request, get_service(request), repository,
+                                     user.user_id, session_id),
             rewriter,
         )
         return await service.chat(user.user_id, session_id, body.message)

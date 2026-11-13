@@ -84,6 +84,9 @@ class ChatSession(Base):
     knowledge_base_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("knowledge_bases.id"), nullable=True, index=True
     )
+    session_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="knowledge", server_default="knowledge"
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="新对话")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.current_timestamp()

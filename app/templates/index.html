@@ -48,8 +48,9 @@
     .evidence { margin:0 10px 10px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:8px; }
     .evidence-head { display:flex; flex-wrap:wrap; gap:8px; color:#344054; font-size:12px; font-weight:600; }
     .evidence-content { margin-top:6px; color:#475467; white-space:pre-wrap; font-size:13px; }
-    .web-mode { display:block; margin:0 0 6px; color:#344054; font-size:12px; }
-    .web-mode input { vertical-align:middle; }
+    .web-mode { margin:0 0 8px; padding:6px 11px; border:1px solid #ccd3df; color:#344054; background:#fff; font-size:12px; }
+    .web-mode.active { border-color:var(--brand); color:#fff; background:var(--brand); }
+    .web-mode:disabled { opacity:.55; cursor:not-allowed; }
     .web-source { color:var(--brand); font-weight:600; }
     .web-label { margin-bottom:6px; color:#3157d5; font-size:12px; font-weight:600; }
     .composer-wrap { position:fixed; bottom:0; left:50%; width:min(1098px,100%); transform:translateX(-50%); padding:12px 24px 20px 284px; background:linear-gradient(transparent,#fff 20%); }
@@ -103,7 +104,7 @@
     <div class="chat-area"><div id="chatScope" class="scope"></div><section id="messages" aria-live="polite"></section></div>
   </div>
   <div class="composer-wrap" id="composerWrap" hidden>
-    <label class="web-mode" id="webModeLabel" hidden><input id="webMode" type="checkbox"> 联网搜索（只发送当前问题，回答引用网页）</label>
+    <button class="web-mode" id="webMode" type="button" aria-pressed="false">🌐 联网搜索：关闭</button>
     <form class="composer" id="composer">
       <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift + Enter 换行" aria-label="问题"></textarea>
       <button class="send" id="send" type="submit" aria-label="发送">↑</button>
@@ -118,8 +119,10 @@
   const webMode = document.querySelector("#webMode");
   let busy = false;
   let uploading = false;
+  let webEnabled = false;
   let sessionId = null;
   let sessionScope = null;
+  let sessionType = "knowledge";
   let legacyReady = false;
   let currentKbId = null;
   let knowledgeBases = [];
@@ -154,30 +157,32 @@
     target.classList.toggle("error", error);
   }
   function canAsk() {
-    if (webMode.checked && webAvailable()) return true;
+    if (webEnabled) return true;
+    if (sessionId && sessionType === "web") return false;
     return sessionId && sessionScope === null
       ? legacyReady  // 迁移前的全库会话
       : Boolean(currentKbId && documents.some(item => item.status === "ready"));
   }
-  function webAvailable() {
-    return Boolean(currentKbId && !documents.some(item => item.status === "ready")
-      && !(sessionId && sessionScope === null));
-  }
   function updateComposer() {
-    const webAllowed = webAvailable();
-    document.querySelector("#webModeLabel").hidden = !webAllowed;
-    if (!webAllowed) webMode.checked = false;
+    webMode.classList.toggle("active", webEnabled);
+    webMode.setAttribute("aria-pressed", String(webEnabled));
+    webMode.textContent = webEnabled ? "🌐 联网搜索：开启" : "🌐 联网搜索：关闭";
+    webMode.disabled = busy || uploading;
     const available = canAsk();
     input.disabled = busy || uploading || !available;
     send.disabled = busy || uploading || !available;
-    document.querySelector("#composerHint").textContent = !currentKbId && !sessionId
-      ? "请先创建或选择知识库，并上传文件"
+    document.querySelector("#composerHint").textContent = webEnabled
+      ? "仅发送当前问题进行联网搜索，回答会显示网页来源"
+      : sessionId && sessionType === "web"
+      ? "此会话只支持联网搜索，请点亮上方按钮"
+      : !currentKbId && !sessionId
+      ? "请选择知识库并上传资料，或开启联网搜索"
       : sessionId && sessionScope === null && !legacyReady
-      ? "旧会话没有可检索资料，请选择知识库并上传文件"
-      : !available ? "当前知识库没有已索引文档：上传资料、重试索引，或主动选择联网搜索"
-      : webMode.checked ? "联网搜索只发送当前问题；回答来自网页，请核对链接"
+      ? "旧会话没有可检索资料，可开启联网搜索"
+      : !available ? "当前知识库没有已索引文档：上传资料、重试索引，或开启联网搜索"
       : "回答由模型生成，请结合检索依据核实关键信息";
-    input.placeholder = available ? "输入问题，Enter 发送，Shift + Enter 换行" : "上传资料或选择联网搜索后即可提问";
+    input.placeholder = webEnabled ? "输入联网问题，Enter 发送" : available
+      ? "输入问题，Enter 发送，Shift + Enter 换行" : "上传资料或开启联网搜索后即可提问";
   }
   async function loadKnowledgeBases(preferredId = currentKbId) {
     knowledgeBases = await api("/knowledge-bases");
@@ -194,9 +199,9 @@
       ? await api(`/knowledge-bases/${encodeURIComponent(currentKbId)}/documents`) : [];
     const container = document.querySelector("#documents");
     container.replaceChildren();
-    if (!currentKbId && sessionId && sessionScope === null)
+    if (!currentKbId && sessionId && sessionScope === null && sessionType === "knowledge")
       setKnowledgeStatus("旧会话按本人全部已索引资料检索；选择知识库可开启新对话。", false);
-    else if (!currentKbId) setKnowledgeStatus("暂无知识库，请先创建。", false);
+    else if (!currentKbId) setKnowledgeStatus("可创建知识库上传资料，或开启联网搜索。", false);
     else if (!documents.length) setKnowledgeStatus("此知识库暂无文件，请先上传。", false);
     else if (!document.querySelector("#knowledgeStatus").classList.contains("error"))
       setKnowledgeStatus(`${documents.filter(item => item.status === "ready").length} 份文件已建立索引。`, false);
@@ -228,7 +233,8 @@
     const container = document.querySelector("#sessions");
     container.replaceChildren();
     list.forEach(item => {
-      const scope = item.knowledge_base_id ? knowledgeName(item.knowledge_base_id) : "旧版全库";
+      const scope = item.session_type === "web" ? "联网对话"
+        : item.knowledge_base_id ? knowledgeName(item.knowledge_base_id) : "旧版全库";
       const button = element("button", `session ${item.id === sessionId ? "active" : ""}`, `${item.title} · ${scope}`);
       button.type = "button";
       button.title = item.title;
@@ -239,15 +245,16 @@
     });
     return list;
   }
-  async function openSession(id) {
+  async function openSession(id, preserveWeb = false) {
     if (busy || uploading) return;
-    webMode.checked = false;
+    if (!preserveWeb) webEnabled = false;
     const data = await api(`/chat/sessions/${encodeURIComponent(id)}`);
     sessionId = id;
     sessionScope = data.knowledge_base_id;
+    sessionType = data.session_type || "knowledge";
     currentKbId = data.knowledge_base_id;
     legacyReady = false;
-    if (sessionScope === null) {
+    if (sessionScope === null && sessionType === "knowledge") {
       const collections = await Promise.all(knowledgeBases.map(item =>
         api(`/knowledge-bases/${encodeURIComponent(item.id)}/documents`)
       ));
@@ -265,7 +272,8 @@
     try {
       user = await api("/auth/me");
     } catch {
-      csrfToken = null; sessionId = null; sessionScope = null; legacyReady = false; history = [];
+      csrfToken = null; sessionId = null; sessionScope = null; sessionType = "knowledge";
+      webEnabled = false; legacyReady = false; history = [];
       showLoggedIn(false); return;
     }
     csrfToken = user.csrf_token;
@@ -347,20 +355,22 @@
     row.append(bubble); messages.append(row); return row;
   }
   function render() {
-    document.querySelector("#chatScope").textContent = sessionId && sessionScope === null
+    document.querySelector("#chatScope").textContent = webEnabled
+      ? "当前模式：联网搜索（只发送本次问题）"
+      : sessionId && sessionType === "web" ? "当前对话：联网专用（请开启联网搜索）"
+      : sessionId && sessionScope === null
       ? "当前对话：旧版全库范围（仅本人资料）"
-      : webMode.checked && webAvailable() ? "当前模式：联网搜索（不使用知识库资料）"
-      : currentKbId ? `当前知识库：${knowledgeName(currentKbId)}` : "请先创建知识库并上传文件";
+      : currentKbId ? `当前知识库：${knowledgeName(currentKbId)}` : "可选择知识库，或开启联网搜索";
     messages.replaceChildren();
     if (!history.length) {
       const empty = element("div", "empty");
-      empty.append(element("strong", "", canAsk() ? "从一个问题开始" : "先上传资料，或选择联网搜索"));
+      empty.append(element("strong", "", canAsk() ? "从一个问题开始" : "先上传资料，或开启联网搜索"));
       empty.append(canAsk()
-        ? sessionId && sessionScope === null
+        ? webEnabled ? "仅发送当前问题进行联网搜索，回答会显示网页来源。"
+          : sessionId && sessionScope === null
           ? "此旧会话会检索你名下全部已索引资料。"
-          : webMode.checked ? "仅发送当前问题进行联网搜索，回答会显示网页来源。"
           : "问题只会检索当前知识库；我会保存这段对话的上下文，方便继续追问。"
-        : "在左侧选择知识库并上传资料；空库也可在输入框上方主动选择联网搜索。");
+        : "选择知识库并上传资料，或点亮输入框上方的联网搜索按钮。");
       messages.append(empty); return;
     }
     history.forEach(renderTurn); scrollToBottom();
@@ -380,14 +390,16 @@
       if (!sessionId) {
         const created = await api("/chat/sessions", {
           method:"POST", headers:{ "Content-Type":"application/json" },
-          body:JSON.stringify({ knowledge_base_id:currentKbId })
+          body:JSON.stringify({ knowledge_base_id:currentKbId,
+            session_type:currentKbId ? "knowledge" : "web" })
         });
         sessionId = created.id;
         sessionScope = created.knowledge_base_id;
+        sessionType = created.session_type;
       }
       const data = await api(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
         method:"POST", headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ message:question, mode:webMode.checked ? "web" : "knowledge" })
+        body:JSON.stringify({ message:question, mode:webEnabled ? "web" : "knowledge" })
       });
       history.push({ role:"assistant", content:data.answer, rewritten_query:data.rewritten_query,
         evidence:data.evidence || [], metadata:data.metadata || {} });
@@ -401,27 +413,33 @@
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.querySelector("#composer").requestSubmit(); }
   });
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight,150)}px`; });
-  webMode.addEventListener("change", () => { updateComposer(); render(); });
+  webMode.addEventListener("click", () => {
+    if (busy || uploading) return;
+    webEnabled = !webEnabled;
+    updateComposer(); render(); input.focus();
+  });
   document.querySelector("#newChat").addEventListener("click", async () => {
     if (busy || uploading) return;
-    if (!currentKbId) { setKnowledgeStatus("请先选择知识库。", true); return; }
-    if (!documents.some(item => item.status === "ready") && !webMode.checked) {
+    if (!currentKbId && !webEnabled) { setKnowledgeStatus("请先选择知识库或开启联网搜索。", true); return; }
+    if (currentKbId && !documents.some(item => item.status === "ready") && !webEnabled) {
       setKnowledgeStatus("请先上传文件并完成索引。", true); return;
     }
     try {
       const created = await api("/chat/sessions", {
         method:"POST", headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ knowledge_base_id:currentKbId })
+        body:JSON.stringify({ knowledge_base_id:currentKbId,
+          session_type:currentKbId ? "knowledge" : "web" })
       });
-      await openSession(created.id);
+      await openSession(created.id, true);
     }
     catch (error) { alert(error.message); }
   });
   document.querySelector("#knowledgeBase").addEventListener("change", async event => {
     if (busy || uploading) { event.target.value = currentKbId || ""; return; }
     currentKbId = event.target.value || null;
-    webMode.checked = false;
-    sessionId = null; sessionScope = currentKbId; legacyReady = false; history = [];
+    webEnabled = false;
+    sessionId = null; sessionScope = currentKbId; sessionType = "knowledge";
+    legacyReady = false; history = [];
     setKnowledgeStatus("", false);
     try { await loadDocuments(); await loadSessions(); render(); }
     catch (error) { setKnowledgeStatus(error.message, true); }
@@ -435,8 +453,9 @@
       const created = await api("/knowledge-bases", {
         method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ name })
       });
-      sessionId = null; sessionScope = created.id; legacyReady = false; history = [];
-      webMode.checked = false;
+      sessionId = null; sessionScope = created.id; sessionType = "knowledge";
+      legacyReady = false; history = [];
+      webEnabled = false;
       document.querySelector("#knowledgeBaseName").value = "";
       setKnowledgeStatus("", false);
       await loadKnowledgeBases(created.id);
@@ -488,8 +507,8 @@
   });
   document.querySelector("#logout").addEventListener("click", async () => {
     try { await api("/auth/logout", { method:"POST" }); } catch { /* clear client state */ }
-    csrfToken = null; sessionId = null; sessionScope = null; legacyReady = false;
-    webMode.checked = false;
+    csrfToken = null; sessionId = null; sessionScope = null; sessionType = "knowledge";
+    legacyReady = false; webEnabled = false;
     currentKbId = null;
     knowledgeBases = []; documents = []; history = []; messages.replaceChildren();
     document.querySelector("#username").textContent = "";

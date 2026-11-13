@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 
 from app.main import app
 from src.auth.service import AuthService
+from src.chat.repository import ChatRepository
 from src.chat.web_search import WebSearchService, WebSearchUnavailable
 from src.db import Base, Document
 from src.db.session import create_session_factory
@@ -94,14 +95,19 @@ def test_web_mode_requires_explicit_choice_and_persists_sources(tmp_path, monkey
         assert (await client.post("/auth/register", json=body)).status_code == 201
         login = await client.post("/auth/login", json=body)
         client.headers["X-CSRF-Token"] = login.json()["csrf_token"]
+        return login.json()["id"]
 
     async def scenario():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as alice, \
                    httpx.AsyncClient(transport=transport, base_url="http://test") as bob:
-            await sign_in(alice, "alice")
+            alice_id = await sign_in(alice, "alice")
             await sign_in(bob, "bob")
+            assert (await alice.post("/chat/sessions", json={})).status_code == 400
             kb = (await alice.post("/knowledge-bases", json={"name": "空库"})).json()
+            assert (await alice.post("/chat/sessions", json={
+                "knowledge_base_id": kb["id"], "session_type": "web"
+            })).status_code == 400
             session_id = (await alice.post(
                 "/chat/sessions", json={"knowledge_base_id": kb["id"]}
             )).json()["id"]
@@ -132,8 +138,23 @@ def test_web_mode_requires_explicit_choice_and_persists_sources(tmp_path, monkey
                 db.add(Document(knowledge_base_id=kb["id"], original_name="ready.md",
                                 file_type="md", sha256="a" * 64, size_bytes=1,
                                 status="ready"))
-            assert (await alice.post(path, json={"message": "已有资料", "mode": "web"})).status_code == 409
-            assert web.queries == ["当前问题", "失败问题"]
+            web.fail = False
+            assert (await alice.post(path, json={"message": "已有资料也联网", "mode": "web"})).status_code == 200
+
+            web_only = await alice.post("/chat/sessions", json={"session_type": "web"})
+            assert web_only.status_code == 201
+            assert web_only.json()["knowledge_base_id"] is None
+            assert web_only.json()["session_type"] == "web"
+            web_path = f"/chat/sessions/{web_only.json()['id']}/messages"
+            assert (await alice.post(web_path, json={"message": "不开联网"})).status_code == 409
+            assert (await alice.post(web_path, json={"message": "无知识库联网", "mode": "web"})).status_code == 200
+            assert (await alice.get(f"/chat/sessions/{web_only.json()['id']}")).json()["messages"][1]["metadata"]["mode"] == "web"
+
+            legacy_id = ChatRepository(factory).create(alice_id)["id"]
+            legacy_path = f"/chat/sessions/{legacy_id}/messages"
+            assert (await alice.post(legacy_path, json={"message": "旧会话联网", "mode": "web"})).status_code == 200
+            assert web.queries == ["当前问题", "失败问题", "已有资料也联网",
+                                   "无知识库联网", "旧会话联网"]
 
     try:
         asyncio.run(scenario())
