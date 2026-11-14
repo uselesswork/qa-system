@@ -10,6 +10,7 @@ from app.main import app
 from src.auth.service import AuthService
 from src.chat.repository import ChatRepository
 from src.chat.web_search import WebSearchService, WebSearchUnavailable
+from src.chat.web_context import answer_from_web_context
 from src.db import Base, Document
 from src.db.session import create_session_factory
 from src.knowledge.service import KnowledgeService
@@ -47,6 +48,82 @@ def test_web_search_uses_only_current_question_and_extracts_citations():
     assert responses.requests[0]["input"] == "当前问题"
     assert responses.requests[0]["tool_choice"] == "required"
     assert responses.requests[0]["store"] is False
+    assert responses.requests[0]["include"] == ["web_search_call.action.sources"]
+
+
+def test_web_search_accepts_search_call_sources_without_inline_annotations():
+    response = SimpleNamespace(
+        output_text="网页答案",
+        output=[SimpleNamespace(type="web_search_call", action=SimpleNamespace(
+            sources=[SimpleNamespace(url="https://example.com/report", title="报告")]
+        )), SimpleNamespace(type="message", content=[SimpleNamespace(
+            type="output_text", annotations=[]
+        )])],
+    )
+    service = WebSearchService(SimpleNamespace(responses=FakeResponses(response)), model="search-test")
+    result = asyncio.run(service.search("问题"))
+    assert result["evidence"][0]["url"] == "https://example.com/report"
+    assert result["metadata"]["citations"][0]["url"] == "https://example.com/report"
+    assert "来源：" in result["answer"]
+
+
+def test_saved_web_answer_can_support_followup_without_new_search():
+    class Repository:
+        def __init__(self):
+            self.saved = []
+
+        def get(self, user_id, session_id):
+            assert (user_id, session_id) == ("owner", "session")
+            return {"messages": [
+                {"role": "user", "content": "明朝何时灭亡？"},
+                {"role": "assistant", "content": "明朝于1644年灭亡。",
+                 "metadata": {"mode": "web"},
+                 "evidence": [{"source_type": "web", "url": "https://example.com/ming",
+                               "title": "史料", "rank": 1}]},
+            ]}
+
+        def append_turn(self, *args):
+            self.saved.append(args)
+
+    class LLM:
+        model = "fake"
+        async def generate(self, prompt):
+            if "只返回 JSON" in prompt:
+                return SimpleNamespace(content=(
+                    '{"supported": true, "index": 1, "quote": "1644年灭亡"}'
+                ))
+            return SimpleNamespace(content="1644年。")
+
+    repo = Repository()
+    result = asyncio.run(answer_from_web_context(
+        repo, LLM(), "owner", "session", "那是哪一年？"
+    ))
+    assert result["answer"] == "1644年。"
+    assert result["evidence"][0]["url"] == "https://example.com/ming"
+    assert result["metadata"]["mode"] == "session_web_context"
+    assert len(repo.saved) == 1
+
+
+def test_unrelated_saved_web_answer_is_not_used_as_evidence():
+    class Repository:
+        def get(self, user_id, session_id):
+            return {"messages": [
+                {"role": "user", "content": "明朝何时灭亡？"},
+                {"role": "assistant", "content": "明朝于1644年灭亡。",
+                 "metadata": {"mode": "web"},
+                 "evidence": [{"source_type": "web", "url": "https://example.com/ming"}]},
+            ]}
+
+        def append_turn(self, *args):
+            raise AssertionError("无关问题不应保存网页上下文回答")
+
+    class LLM:
+        async def generate(self, prompt):
+            return SimpleNamespace(content='{"supported": false, "index": 0, "quote": ""}')
+
+    assert asyncio.run(answer_from_web_context(
+        Repository(), LLM(), "owner", "session", "唐朝何时建立？"
+    )) is None
 
 
 def test_web_search_rejects_answer_without_web_source():
@@ -89,6 +166,15 @@ def test_web_mode_requires_explicit_choice_and_persists_sources(tmp_path, monkey
 
     web = FakeWeb()
     monkeypatch.setattr(app.state, "web_search_service", web, raising=False)
+
+    class ContextLLM:
+        model = "fake"
+        async def generate(self, prompt):
+            if "只返回 JSON" in prompt:
+                return SimpleNamespace(content='{"supported": true, "index": 1, "quote": "网页答案"}')
+            return SimpleNamespace(content="根据已保存的网页答案。")
+
+    monkeypatch.setattr(app.state, "rag_core", SimpleNamespace(llm=ContextLLM()), raising=False)
 
     async def sign_in(client, name):
         body = {"username": name, "password": "long-test-password-123"}
@@ -149,12 +235,21 @@ def test_web_mode_requires_explicit_choice_and_persists_sources(tmp_path, monkey
             assert (await alice.post(web_path, json={"message": "不开联网"})).status_code == 409
             assert (await alice.post(web_path, json={"message": "无知识库联网", "mode": "web"})).status_code == 200
             assert (await alice.get(f"/chat/sessions/{web_only.json()['id']}")).json()["messages"][1]["metadata"]["mode"] == "web"
+            cached = await alice.post(web_path, json={"message": "那答案是什么？"})
+            assert cached.status_code == 200, cached.text
+            assert cached.json()["metadata"]["mode"] == "session_web_context"
+            assert cached.json()["evidence"][0]["url"] == "https://example.com/a"
+            assert len(web.queries) == 4
+            retried = await alice.post(web_path, json={"message": "重新回答", "mode": "web"})
+            assert retried.status_code == 200
+            assert "前一个问题：那答案是什么？" in web.queries[-1]
 
             legacy_id = ChatRepository(factory).create(alice_id)["id"]
             legacy_path = f"/chat/sessions/{legacy_id}/messages"
             assert (await alice.post(legacy_path, json={"message": "旧会话联网", "mode": "web"})).status_code == 200
-            assert web.queries == ["当前问题", "失败问题", "已有资料也联网",
-                                   "无知识库联网", "旧会话联网"]
+            assert web.queries[:4] == ["当前问题", "失败问题", "已有资料也联网",
+                                      "无知识库联网"]
+            assert web.queries[-1] == "旧会话联网"
 
     try:
         asyncio.run(scenario())

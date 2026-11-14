@@ -158,6 +158,8 @@
   }
   function canAsk() {
     if (webEnabled) return true;
+    if (sessionId && history.some(item => item.role === "assistant" &&
+        ["web", "session_web_context"].includes(item.metadata?.mode))) return true;
     if (sessionId && sessionType === "web") return false;
     return sessionId && sessionScope === null
       ? legacyReady  // 迁移前的全库会话
@@ -172,14 +174,16 @@
     input.disabled = busy || uploading || !available;
     send.disabled = busy || uploading || !available;
     document.querySelector("#composerHint").textContent = webEnabled
-      ? "仅发送当前问题进行联网搜索，回答会显示网页来源"
-      : sessionId && sessionType === "web"
-      ? "此会话只支持联网搜索，请点亮上方按钮"
+      ? "联网搜索会显示网页来源；追问可结合上一条问题"
+      : sessionId && sessionType === "web" && !available
+      ? "此会话还没有可用的网页回答，请开启联网搜索"
       : !currentKbId && !sessionId
       ? "请选择知识库并上传资料，或开启联网搜索"
       : sessionId && sessionScope === null && !legacyReady
       ? "旧会话没有可检索资料，可开启联网搜索"
       : !available ? "当前知识库没有已索引文档：上传资料、重试索引，或开启联网搜索"
+      : history.some(item => item.metadata?.mode === "web")
+      ? "可依据本会话已保存的网页回答追问；新问题可开启联网搜索"
       : "回答由模型生成，请结合检索依据核实关键信息";
     input.placeholder = webEnabled ? "输入联网问题，Enter 发送" : available
       ? "输入问题，Enter 发送，Shift + Enter 换行" : "上传资料或开启联网搜索后即可提问";
@@ -263,6 +267,7 @@
     document.querySelector("#knowledgeBase").value = currentKbId || "";
     await loadDocuments();
     history = data.messages;
+    updateComposer();
     render();
     await loadSessions();
     input.focus();
@@ -326,8 +331,9 @@
     const bubble = element("div", "bubble");
     if (turn.role === "user") bubble.textContent = turn.content;
     else {
-      const isWeb = turn.metadata?.mode === "web";
-      if (isWeb) bubble.append(element("div", "web-label", "联网回答 · 网页来源"));
+      const isWeb = ["web", "session_web_context"].includes(turn.metadata?.mode);
+      if (isWeb) bubble.append(element("div", "web-label", turn.metadata?.mode === "session_web_context"
+        ? "基于本会话网页回答 · 未重新联网" : "联网回答 · 网页来源"));
       const answer = element("div", turn.error ? "answer error" : "answer");
       if (isWeb) renderWebAnswer(answer, turn.content, turn.metadata?.citations);
       else answer.textContent = turn.content;
@@ -356,8 +362,8 @@
   }
   function render() {
     document.querySelector("#chatScope").textContent = webEnabled
-      ? "当前模式：联网搜索（只发送本次问题）"
-      : sessionId && sessionType === "web" ? "当前对话：联网专用（请开启联网搜索）"
+      ? "当前模式：联网搜索（追问可结合上一条问题）"
+      : sessionId && sessionType === "web" ? "当前对话：可追问已保存的网页回答"
       : sessionId && sessionScope === null
       ? "当前对话：旧版全库范围（仅本人资料）"
       : currentKbId ? `当前知识库：${knowledgeName(currentKbId)}` : "可选择知识库，或开启联网搜索";

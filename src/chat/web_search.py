@@ -20,6 +20,7 @@ class WebSearchService:
             model=self.model,
             tools=[{"type": "web_search", "search_context_size": "low"}],
             tool_choice="required",
+            include=["web_search_call.action.sources"],
             input=question,
             store=False,
         )
@@ -28,15 +29,31 @@ class WebSearchService:
         sources = []
         seen = set()
         for output in response.output:
+            if output.type == "web_search_call":
+                for source in getattr(getattr(output, "action", None), "sources", None) or []:
+                    url = getattr(source, "url", None)
+                    if not isinstance(url, str):
+                        continue
+                    parsed = urlsplit(url)
+                    if parsed.scheme not in ("http", "https") or not parsed.netloc or url in seen:
+                        continue
+                    seen.add(url)
+                    sources.append({"source_type": "web", "title": getattr(source, "title", None) or parsed.netloc,
+                                    "url": url, "rank": len(sources) + 1})
+                continue
             if output.type != "message":
                 continue
             for content in output.content:
                 if content.type != "output_text":
                     continue
+                if not answer:
+                    answer = getattr(content, "text", "") or ""
                 for annotation in content.annotations or []:
                     if annotation.type != "url_citation":
                         continue
-                    url = annotation.url
+                    url = getattr(annotation, "url", None)
+                    if not isinstance(url, str):
+                        continue
                     parsed = urlsplit(url)
                     if parsed.scheme not in ("http", "https") or not parsed.netloc:
                         continue
@@ -48,8 +65,17 @@ class WebSearchService:
                         seen.add(url)
                         sources.append({"source_type": "web", "title": title,
                                         "url": url, "rank": len(sources) + 1})
-        if not answer.strip() or not sources:
+        if not answer.strip():
+            raise WebSearchUnavailable("联网搜索没有返回文字答案，请稍后重试。")
+        if not sources:
             raise WebSearchUnavailable("联网搜索没有返回可核对的网页来源，请稍后重试。")
+        if not citations:
+            for source in sources[:3]:
+                marker = f"【{source['rank']}】"
+                answer += f"\n来源：{marker}"
+                citations.append({"url": source["url"], "title": source["title"],
+                                  "start_index": len(answer) - len(marker),
+                                  "end_index": len(answer)})
         return {"answer": answer, "evidence": sources,
                 "metadata": {"mode": "web", "model": self.model,
                              "citations": citations}}

@@ -12,6 +12,7 @@ from src.knowledge.service import KnowledgeError, KnowledgeService
 from src.chat.persistent import PersistentChatService
 from src.chat.repository import ChatNotFound, ChatRepository
 from src.chat.web_search import WebSearchService, WebSearchUnavailable
+from src.chat.web_context import answer_from_web_context
 
 
 router = APIRouter(prefix="/chat/sessions", tags=["chat-sessions"])
@@ -91,12 +92,22 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
                        user: AuthContext = Depends(require_csrf),
                        repository: ChatRepository = Depends(get_repository)):
     try:
+        if not body.message.strip():
+            raise HTTPException(400, "消息不能为空。")
         if body.mode == "web":
             question = body.message.strip()
             if not question or len(question) > 2000:
                 raise HTTPException(400, "联网搜索问题不能为空或超过 2000 字符。")
             repository.scope_info(user.user_id, session_id)
-            result = await get_web_search(request).search(question)
+            search_input = question
+            if question.startswith(("重新回答", "再回答", "那", "它", "这个", "刚才", "上面", "继续")):
+                earlier = repository.history(user.user_id, session_id)
+                previous = next((item.content for item in reversed(earlier)
+                                 if item.role == "user"), "")
+                if previous:
+                    search_input = (f"前一个问题：{previous}\n当前追问：{question}\n"
+                                    "请回答当前追问并引用可核对的网页来源。")
+            result = await get_web_search(request).search(search_input)
             repository.append_turn(
                 user.user_id, session_id, question, result["answer"], question,
                 result["evidence"], result["metadata"],
@@ -107,6 +118,14 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
         rewriter = getattr(request.app.state, "query_rewriter", None)
         if rewriter is None:
             raise HTTPException(503, "问答服务尚未就绪。")
+        repository.scope_info(user.user_id, session_id)
+        rag_core = getattr(request.app.state, "rag_core", None)
+        if rag_core is not None:
+            contextual = await answer_from_web_context(
+                repository, rag_core.llm, user.user_id, session_id, body.message.strip()
+            )
+            if contextual is not None:
+                return contextual
         service = PersistentChatService(
             repository, session_core(request, get_service(request), repository,
                                      user.user_id, session_id),
