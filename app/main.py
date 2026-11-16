@@ -18,6 +18,7 @@ from src.chat.persistent import PersistentChatService
 from src.chat.repository import ChatNotFound, ChatRepository
 from src.knowledge.service import KnowledgeService
 from src.chat.service import LLMQueryRewriter
+from src.observability.http import request_log_middleware
 
 
 class AskRequest(BaseModel):
@@ -61,6 +62,7 @@ app = FastAPI(
     title="Minimal RAG Backend",
     lifespan=lifespan
 )
+app.middleware("http")(request_log_middleware)
 app.include_router(knowledge_router)
 app.include_router(auth_router)
 app.include_router(chat_router)

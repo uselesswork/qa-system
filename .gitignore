@@ -11,3 +11,5 @@ LangSmith.env
 data/uploads/
 data/qdrant/
 /celerybeat-schedule*
+eval/predictions.jsonl
+eval/reports/

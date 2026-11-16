@@ -77,7 +77,9 @@ class RAGCore:
 
         return results
 
-    def _result(self, answer, sources, evidence, started, llm_metadata=None):
+    def _result(self, answer, sources, evidence, started, llm_metadata=None,
+                retrieval_ms=None):
+        total_ms = (time.perf_counter() - started) * 1000
         return RAGResult(
             answer=answer,
             sources=sources,
@@ -86,6 +88,11 @@ class RAGCore:
                 "latency": round(time.perf_counter() - started, 3),
                 "top_k": self.top_k,
                 "llm": llm_metadata or {},
+                "stage_timings_ms": {
+                    "retrieval": round(retrieval_ms, 3) if retrieval_ms is not None else None,
+                    "answer": round(max(0, total_ms - retrieval_ms), 3)
+                    if retrieval_ms is not None else None,
+                },
             },
         )
 
@@ -93,17 +100,20 @@ class RAGCore:
     async def answer(self, query: str) -> RAGResult:
         started = time.perf_counter()
         results = await self._retrieve(query)
+        retrieval_ms = (time.perf_counter() - started) * 1000
 
         if self.aggregator:
             aggregated = await self.aggregator.aggregate(query=query, results=results)
             return self._result(
-                aggregated.answer, results, aggregated.evidence_chunks, started
+                aggregated.answer, results, aggregated.evidence_chunks, started,
+                retrieval_ms=retrieval_ms,
             )
 
         prompt = self.prompt_builder.build(query=query, chunks=results)
         llm_answer = await self.llm.generate(prompt)
         return self._result(
-            llm_answer.content, results, [], started, llm_answer.metadata
+            llm_answer.content, results, [], started, llm_answer.metadata,
+            retrieval_ms=retrieval_ms,
         )
 
     @traceable(name="rag_answer_stream")
@@ -113,6 +123,7 @@ class RAGCore:
         """流式文本和最终证据来自同一次检索/生成，不再重复回答。"""
         started = time.perf_counter()
         results = await self._retrieve(query)
+        retrieval_ms = (time.perf_counter() - started) * 1000
 
         if self.aggregator:
             aggregated = await self.aggregator.aggregate(query=query, results=results)
@@ -121,7 +132,8 @@ class RAGCore:
                 yield RAGStreamEvent(answer_chunk=aggregated.answer[index:index + 64])
             yield RAGStreamEvent(
                 result=self._result(
-                    aggregated.answer, results, aggregated.evidence_chunks, started
+                    aggregated.answer, results, aggregated.evidence_chunks, started,
+                    retrieval_ms=retrieval_ms,
                 )
             )
             return
@@ -132,7 +144,8 @@ class RAGCore:
             answer_parts.append(chunk)
             yield RAGStreamEvent(answer_chunk=chunk)
         yield RAGStreamEvent(
-            result=self._result("".join(answer_parts), results, [], started)
+            result=self._result("".join(answer_parts), results, [], started,
+                                retrieval_ms=retrieval_ms)
         )
 
     async def stream_answer(self, query: str) -> AsyncIterator[str]:

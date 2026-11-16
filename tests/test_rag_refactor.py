@@ -90,6 +90,8 @@ def test_aggregated_answer_does_not_generate_twice():
     assert aggregator.calls == 1
     assert llm.generate_calls == []
     assert result.metadata["llm"] == {}
+    assert result.metadata["stage_timings_ms"]["retrieval"] >= 0
+    assert result.metadata["stage_timings_ms"]["answer"] >= 0
 
 
 def test_plain_answer_generates_once():

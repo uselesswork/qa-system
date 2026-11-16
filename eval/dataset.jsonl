@@ -1,0 +1,5 @@
+{"id":"direct","category":"直接问答","question":"北岭项目的交付日期是什么？","relevant_sources":["project.md"],"answer_contains":["2026年6月18日"],"should_refuse":false}
+{"id":"cross_document","category":"跨文档","question":"北岭项目由谁负责，交付日期是什么？","relevant_sources":["project.md","team.md"],"answer_contains":["林岚","2026年6月18日"],"should_refuse":false}
+{"id":"followup","category":"指代追问","history":[{"role":"user","content":"北岭项目由谁负责？"},{"role":"assistant","content":"林岚负责。"}],"question":"它的交付日期是什么？","relevant_sources":["project.md"],"answer_contains":["2026年6月18日"],"should_refuse":false}
+{"id":"unanswerable","category":"无答案","question":"北岭项目的预算是多少？","relevant_sources":[],"answer_contains":[],"should_refuse":true}
+{"id":"noise","category":"噪声干扰","question":"北岭项目的交付日期是什么？","relevant_sources":["project.md"],"answer_contains":["2026年6月18日"],"should_refuse":false,"distractor_sources":["noise.md"]}
