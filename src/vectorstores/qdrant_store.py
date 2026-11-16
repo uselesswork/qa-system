@@ -28,6 +28,10 @@ class QdrantVectorStore(BaseVectorStore):
         path.mkdir(parents=True, exist_ok=True)
         return cls(QdrantClient(path=str(path)), collection)
 
+    @classmethod
+    def remote(cls, url: str, collection: str = "qa_chunks"):
+        return cls(QdrantClient(url=url), collection)
+
     def ensure_collection(self, dimension: int) -> None:
         if self.client.collection_exists(self.collection):
             existing = self.client.get_collection(self.collection).config.params.vectors
@@ -89,6 +93,16 @@ class QdrantVectorStore(BaseVectorStore):
             self.client.delete(
                 collection_name=self.collection,
                 points_selector=models.PointIdsList(points=ids),
+                wait=True,
+            )
+
+    def delete_document(self, document_id: str) -> None:
+        if self.client.collection_exists(self.collection):
+            self.client.delete(
+                collection_name=self.collection,
+                points_selector=models.FilterSelector(filter=models.Filter(must=[
+                    models.FieldCondition(key="document_id", match=models.MatchValue(value=document_id))
+                ])),
                 wait=True,
             )
 

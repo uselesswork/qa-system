@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from src.db import Chunk, Document, KnowledgeBase
+from src.db import Chunk, Document, IngestionTask, KnowledgeBase
 from src.embeddings.base import BaseEmbedding
 from src.loaders.md_loader import MarkdownLoader
 from src.loaders.pdf_loader import PdfLoader
@@ -46,6 +46,103 @@ class KnowledgeService:
                 "original_name": doc.original_name, "status": doc.status,
                 "error_message": doc.error_message, "size_bytes": doc.size_bytes}
 
+    @staticmethod
+    def task_json(task: IngestionTask) -> dict:
+        return {"id": task.id, "document_id": task.document_id,
+                "status": task.status, "attempts": task.attempts,
+                "error_message": task.error_message}
+
+    def queue_upload(self, kb_id: str, filename: str, content: bytes,
+                     owner_id: str) -> dict:
+        self.get_kb(kb_id, owner_id)
+        safe_name = Path(filename.replace("\\", "/")).name
+        suffix = Path(safe_name).suffix.lower()
+        if not safe_name or len(safe_name) > 255 or suffix not in LOADERS:
+            raise KnowledgeError("仅支持 .md、.txt、.pdf 文件，文件名不能超过 255 字符。")
+        if not content or len(content) > MAX_FILE_BYTES:
+            raise KnowledgeError("文件不能为空或超过 10 MiB。", 413)
+        digest = sha256(content).hexdigest()
+        document_id = str(uuid4())
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        path = self.upload_dir / f"{document_id}{suffix}"
+        path.write_bytes(content)
+        try:
+            with self.sessions.begin() as session:
+                if session.scalar(select(Document.id).where(
+                    Document.knowledge_base_id == kb_id, Document.sha256 == digest
+                )):
+                    raise KnowledgeError("相同内容已存在于该知识库。", 409)
+                session.add(Document(
+                    id=document_id, knowledge_base_id=kb_id, original_name=safe_name,
+                    file_type=suffix[1:], storage_key=path.name, sha256=digest,
+                    size_bytes=len(content), status="pending",
+                ))
+                task = IngestionTask(document_id=document_id, status="pending", attempts=0)
+                session.add(task)
+                session.flush()
+                result = self.task_json(task)
+        except IntegrityError as exc:
+            path.unlink(missing_ok=True)
+            raise KnowledgeError("相同内容已存在于该知识库。", 409) from exc
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+        return result
+
+    def get_task(self, kb_id: str, task_id: str, owner_id: str) -> dict:
+        self.get_kb(kb_id, owner_id)
+        with self.sessions() as session:
+            task = session.get(IngestionTask, task_id)
+            doc = session.get(Document, task.document_id) if task else None
+            if doc is None or doc.knowledge_base_id != kb_id:
+                raise KnowledgeError("索引任务不存在。", 404)
+            return self.task_json(task)
+
+    def retry_task(self, kb_id: str, task_id: str, owner_id: str) -> dict:
+        self.get_kb(kb_id, owner_id)
+        with self.sessions.begin() as session:
+            task = session.get(IngestionTask, task_id, with_for_update=True)
+            doc = session.get(Document, task.document_id) if task else None
+            if doc is None or doc.knowledge_base_id != kb_id:
+                raise KnowledgeError("索引任务不存在。", 404)
+            if task.status not in ("failed", "pending"):
+                raise KnowledgeError("仅失败或排队中的任务可以重新提交。", 409)
+            task.status = doc.status = "pending"
+            task.error_message = doc.error_message = None
+            return self.task_json(task)
+
+    async def run_task(self, task_id: str) -> None:
+        with self.sessions.begin() as session:
+            task = session.get(IngestionTask, task_id, with_for_update=True)
+            if task is None or task.status != "pending":
+                return
+            doc = session.get(Document, task.document_id)
+            if doc is None:
+                return
+            task.status = doc.status = "indexing"
+            task.attempts += 1
+            kb_id, doc_id = doc.knowledge_base_id, doc.id
+        try:
+            await self.reindex_document(kb_id, doc_id)
+        except Exception as exc:
+            cause = exc.__cause__ or exc
+            detail = f"{type(cause).__name__}: {cause}"[:1000]
+            with self.sessions.begin() as session:
+                task = session.get(IngestionTask, task_id)
+                if task:
+                    task.status = "failed"
+                    task.error_message = detail
+                    doc = session.get(Document, task.document_id)
+                    if doc:
+                        doc.status = "failed"
+                        doc.error_message = detail
+            return
+        with self.sessions.begin() as session:
+            task = session.get(IngestionTask, task_id)
+            if task:
+                task.status = "ready"
+                task.error_message = None
+
     def create_kb(self, name: str, description: str | None,
                   owner_id: str | None = None) -> dict:
         name = name.strip()
@@ -76,10 +173,35 @@ class KnowledgeService:
     def list_documents(self, kb_id: str, owner_id: str | None = None) -> list[dict]:
         self.get_kb(kb_id, owner_id)
         with self.sessions() as session:
-            return [self.doc_json(doc) for doc in session.scalars(
+            docs = session.scalars(
                 select(Document).where(Document.knowledge_base_id == kb_id)
                 .order_by(Document.created_at, Document.id)
-            )]
+            ).all()
+            tasks = session.scalars(select(IngestionTask).where(
+                IngestionTask.document_id.in_([doc.id for doc in docs])
+            ).order_by(IngestionTask.created_at.desc(), IngestionTask.id.desc())).all() if docs else []
+            latest = {}
+            for task in tasks:
+                latest.setdefault(task.document_id, task)
+            return [{**self.doc_json(doc), "task_id": latest[doc.id].id if doc.id in latest else None}
+                    for doc in docs]
+
+    def queue_reindex(self, kb_id: str, document_id: str, owner_id: str) -> dict:
+        self.get_kb(kb_id, owner_id)
+        with self.sessions.begin() as session:
+            doc = session.get(Document, document_id, with_for_update=True)
+            if doc is None or doc.knowledge_base_id != kb_id:
+                raise KnowledgeError("文档不存在。", 404)
+            if not doc.storage_key:
+                raise KnowledgeError("该文档没有可重建的原文件。", 409)
+            if doc.status in ("pending", "indexing"):
+                raise KnowledgeError("文档正在排队或索引。", 409)
+            doc.status = "pending"
+            doc.error_message = None
+            task = IngestionTask(document_id=doc.id, status="pending", attempts=0)
+            session.add(task)
+            session.flush()
+            return self.task_json(task)
 
     def ready_document_ids(self, kb_id: str, owner_id: str | None = None) -> list[str]:
         self.get_kb(kb_id, owner_id)
@@ -199,10 +321,9 @@ class KnowledgeService:
             if doc is None or doc.knowledge_base_id != kb_id:
                 raise KnowledgeError("文档不存在。", 404)
             doc.status = "pending"  # 删除跨库资源前先撤销可检索状态
-            ids = list(session.scalars(select(Chunk.id).where(Chunk.document_id == document_id)))
             storage_key = doc.storage_key
         try:
-            self.vectors.delete_points(ids)
+            self.vectors.delete_document(document_id)
         except Exception as exc:
             raise KnowledgeError("删除向量失败；文档保留为 pending，可重试。", 503) from exc
         with self.sessions.begin() as session:
@@ -223,11 +344,10 @@ class KnowledgeService:
             if not path.is_file():
                 raise KnowledgeError("原文件不存在，无法重建。", 409)
             doc.status = "pending"
-            ids = list(session.scalars(select(Chunk.id).where(Chunk.document_id == document_id)))
             suffix = path.suffix.lower()
             safe_name = doc.original_name
         try:
-            self.vectors.delete_points(ids)
+            self.vectors.delete_document(document_id)
         except Exception as exc:
             raise KnowledgeError("删除旧向量失败，文档保留为 pending，可重试。", 503) from exc
         with self.sessions.begin() as session:

@@ -76,7 +76,7 @@ def test_initial_migration_upgrades_and_downgrades_temp_database(tmp_path, monke
 
     engine = create_engine(url)
     inspector = inspect(engine)
-    assert {"knowledge_bases", "documents", "chunks", "alembic_version"} <= set(
+    assert {"knowledge_bases", "documents", "chunks", "ingestion_tasks", "alembic_version"} <= set(
         inspector.get_table_names()
     )
     assert {"knowledge_base_id", "sha256", "status"} <= {

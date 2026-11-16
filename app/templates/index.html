@@ -212,17 +212,20 @@
     documents.forEach(item => {
       const row = element("div", "doc-item");
       const labels = { ready:"已索引", failed:"索引失败", pending:"待索引", indexing:"索引中" };
-      row.append(element("span", "", `${item.original_name} · ${labels[item.status] || item.status}`));
-      if (item.status === "failed") {
-        const retry = element("button", "", "重试索引");
+      row.append(element("span", "", `${item.original_name} · ${labels[item.status] || item.status}${item.status === "failed" && item.error_message ? `：${item.error_message}` : ""}`));
+      if (item.status === "failed" || item.status === "ready") {
+        const retry = element("button", "", item.status === "failed" ? "重试索引" : "重建索引");
         retry.type = "button";
         retry.addEventListener("click", async () => {
           const kbId = currentKbId;
           retry.disabled = true;
           setKnowledgeStatus("正在重试索引，请稍候……");
           try {
-            await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(item.id)}/reindex`, { method:"POST" });
-            setKnowledgeStatus("重试成功，文件已可检索。", false);
+            if (item.status === "failed" && item.task_id)
+              await api(`/knowledge-bases/${encodeURIComponent(kbId)}/tasks/${encodeURIComponent(item.task_id)}/retry`, { method:"POST" });
+            else
+              await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(item.id)}/reindex`, { method:"POST" });
+            setKnowledgeStatus("索引任务已提交，正在等待处理。", false);
           } catch (error) { setKnowledgeStatus(error.message, true); }
           finally { await loadDocuments(); }
         });
@@ -480,17 +483,21 @@
     const kbId = currentKbId;
     const form = new FormData(); form.append("file", file);
     uploading = true; button.disabled = true; updateComposer();
-    setKnowledgeStatus("正在上传并建立索引，可能需要一段时间……", false);
+    setKnowledgeStatus("正在上传文件……", false);
     try {
-      await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents`, { method:"POST", body:form });
+      const result = await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents`, { method:"POST", body:form });
       fileInput.value = "";
-      setKnowledgeStatus("上传并建立索引成功，现在可以提问。", false);
+      setKnowledgeStatus(result.document_id ? "上传完成，索引任务已排队。" : "上传并建立索引成功，现在可以提问。", false);
     } catch (error) { setKnowledgeStatus(error.message, true); }
     finally {
       uploading = false; button.disabled = false;
       await loadDocuments(); render();
     }
   });
+  setInterval(() => {
+    if (!currentKbId || uploading || busy || !documents.some(item => ["pending", "indexing"].includes(item.status))) return;
+    loadDocuments().then(render).catch(error => setKnowledgeStatus(error.message, true));
+  }, 3000);
   document.querySelector("#authPanel").addEventListener("submit", async event => {
     event.preventDefault();
     const username = document.querySelector("#authUsername").value;

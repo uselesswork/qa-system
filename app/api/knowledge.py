@@ -1,9 +1,10 @@
 """知识库管理与按库问答接口。"""
 
 from pathlib import Path
+import os
 from threading import Lock
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
 from openai import APIError
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from src.knowledge.service import KnowledgeError, KnowledgeService, MAX_FILE_BYT
 from src.rag.rag_core import RAGCore
 from src.retrievers.simple_retriever import SimpleRetriever
 from src.vectorstores.qdrant_store import QdrantVectorStore
+from src.tasks.ingest import dispatch_ingestion
 from app.api.auth import require_csrf, require_user
 from src.auth.service import AuthContext
 
@@ -43,7 +45,9 @@ def get_service(request: Request) -> KnowledgeService:
         engine = vectors = None
         try:
             engine = create_database_engine()
-            vectors = QdrantVectorStore.local(ROOT / "data" / "qdrant")
+            qdrant_url = os.getenv("QDRANT_URL")
+            vectors = (QdrantVectorStore.remote(qdrant_url) if qdrant_url
+                       else QdrantVectorStore.local(ROOT / "data" / "qdrant"))
             service = KnowledgeService(
                 create_session_factory(engine), vectors, OpenAIEmbedding(),
                 ROOT / "data" / "uploads",
@@ -118,12 +122,24 @@ def list_documents(kb_id: str, user: AuthContext = Depends(require_user),
         raise translate(exc) from exc
 
 
+def async_index_enabled() -> bool:
+    return bool(os.getenv("QDRANT_URL") and os.getenv("REDIS_URL"))
+
+
 @router.post("/{kb_id}/documents", status_code=201)
-async def upload_document(kb_id: str, file: UploadFile = File(...),
+async def upload_document(kb_id: str, response: Response, file: UploadFile = File(...),
                           user: AuthContext = Depends(require_csrf),
                           service: KnowledgeService = Depends(get_service)):
     try:
         content = await file.read(MAX_FILE_BYTES + 1)
+        if async_index_enabled():
+            task = service.queue_upload(kb_id, file.filename or "", content, user.user_id)
+            try:
+                dispatch_ingestion(task["id"])
+            except Exception as exc:
+                raise HTTPException(503, f"索引任务已保存但无法入队：{type(exc).__name__}。可稍后重试。") from exc
+            response.status_code = 202
+            return task
         return await service.upload(kb_id, file.filename or "", content, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
@@ -142,13 +158,45 @@ def delete_document(kb_id: str, document_id: str,
 
 
 @router.post("/{kb_id}/documents/{document_id}/reindex")
-async def reindex_document(kb_id: str, document_id: str,
+async def reindex_document(kb_id: str, document_id: str, response: Response,
                            user: AuthContext = Depends(require_csrf),
                            service: KnowledgeService = Depends(get_service)):
     try:
+        if async_index_enabled():
+            task = service.queue_reindex(kb_id, document_id, user.user_id)
+            try:
+                dispatch_ingestion(task["id"])
+            except Exception as exc:
+                raise HTTPException(503, f"索引任务已保存但无法入队：{type(exc).__name__}。可稍后重试。") from exc
+            response.status_code = 202
+            return task
         return await service.reindex_document(kb_id, document_id, user.user_id)
     except KnowledgeError as exc:
         raise translate(exc) from exc
+
+
+@router.get("/{kb_id}/tasks/{task_id}")
+def get_ingestion_task(kb_id: str, task_id: str,
+                       user: AuthContext = Depends(require_user),
+                       service: KnowledgeService = Depends(get_service)):
+    try:
+        return service.get_task(kb_id, task_id, user.user_id)
+    except KnowledgeError as exc:
+        raise translate(exc) from exc
+
+
+@router.post("/{kb_id}/tasks/{task_id}/retry", status_code=202)
+def retry_ingestion_task(kb_id: str, task_id: str,
+                         user: AuthContext = Depends(require_csrf),
+                         service: KnowledgeService = Depends(get_service)):
+    try:
+        task = service.retry_task(kb_id, task_id, user.user_id)
+        dispatch_ingestion(task_id)
+        return task
+    except KnowledgeError as exc:
+        raise translate(exc) from exc
+    except Exception as exc:
+        raise HTTPException(503, f"任务已保存但无法入队：{type(exc).__name__}。") from exc
 
 
 @router.post("/{kb_id}/ask")
