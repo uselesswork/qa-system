@@ -10,3 +10,4 @@ LangSmith.env
 .resume_qa_*/
 data/uploads/
 data/qdrant/
+/celerybeat-schedule*
