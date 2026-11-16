@@ -83,6 +83,7 @@
    原实验使用 LangSmith 追踪时，可另装 `"langsmith>=0.1.0"`；旧实验环境还列过 `"langchain>=0.1.16"` 与 `"langchain-openai>=0.0.6"`，当前 Web 代码没有直接导入这两个包。依赖版本与安装方式以后只在本 README 更新。
 
 2. 复制 `.env.example` 为本地 `.env`，填入自己的 `OPENAI_API_KEY` 和 `DATABASE_URL`，并先执行下文的 `alembic upgrade head`。应用和实验脚本均从根目录 `.env` 读取配置，进程环境变量优先。本地 `.env` 已被 Git 忽略，不要提交真实密钥。
+   如果要启用异步索引，启动 Web 前按[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)启动 Redis、Qdrant，并在 `.env` 配置 `REDIS_URL`、`QDRANT_URL`；不配置时沿用同步上传。
 3. 从项目根目录启动服务：
 
    ```powershell
@@ -101,7 +102,7 @@
 .\.venv\Scripts\python.exe -m pip install "SQLAlchemy>=2.0,<3" "alembic>=1.13,<2" "PyMySQL>=1.1,<2" "qdrant-client>=1.12,<2" "python-multipart>=0.0.9,<1"
 ```
 
-阶段 13 异步索引另需 `.\.venv\Scripts\python.exe -m pip install "celery[redis]>=5.5,<5.7" "packaging<26"`，并运行 Redis、独立 Qdrant、Celery worker 与 beat；见[启动步骤](docs/第十三阶段-异步索引与任务状态.md)。
+阶段 13 异步索引另需 `.\.venv\Scripts\python.exe -m pip install "celery[redis]>=5.5,<5.7" "packaging<26"`，并运行 Redis、独立 Qdrant、Celery worker 与 beat；见[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)。
 
 本机 MySQL 8.0 的 `qa_system` 已由用户创建，并已应用初始迁移。换一台机器时，先用 MySQL 管理员在本机执行 `scripts/create_database.sql`；把有该库权限的连接账号写入 Git 忽略的 `.env` 中的 `DATABASE_URL`。示例 URL 的 `qa_app` 是用户名、`YOUR_PASSWORD` 是密码、`qa_system` 是数据库名；密码中的 `@`、`:`、`/` 等字符需做 URL 编码。不要将真实连接串提交或发送到聊天。
 
