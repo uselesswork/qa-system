@@ -13,3 +13,4 @@ data/qdrant/
 /celerybeat-schedule*
 eval/predictions.jsonl
 eval/reports/
+/.runtime/

@@ -85,6 +85,7 @@
 
 2. 复制 `.env.example` 为本地 `.env`，填入自己的 `OPENAI_API_KEY` 和 `DATABASE_URL`，并先执行下文的 `alembic upgrade head`。应用和实验脚本均从根目录 `.env` 读取配置，进程环境变量优先。本地 `.env` 已被 Git 忽略，不要提交真实密钥。
    如果要启用异步索引，启动 Web 前按[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)启动 Redis、Qdrant，并在 `.env` 配置 `REDIS_URL`、`QDRANT_URL`；不配置时沿用同步上传。
+   本机异步模式完成一次性配置后，可在项目根目录运行 `.\run.cmd`，一条命令启动 Docker 中的 Redis、Qdrant 和后台 Web、worker、beat；`.\run.cmd status` 查看状态，`.\run.cmd stop` 停止。Docker Desktop 与 MySQL 需先运行。
 3. 从项目根目录启动服务：
 
    ```powershell

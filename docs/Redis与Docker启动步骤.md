@@ -65,6 +65,25 @@ Web 与 worker 应使用同一份 `.env`。安装阶段 13 依赖并升级 MySQL
 
 ## 4. 分别启动 Web、worker 和 beat
 
+### 一条命令启动（推荐）
+
+先启动 Docker Desktop 并确认 MySQL 正在运行。进入项目根目录后执行：
+
+```powershell
+.\run.cmd
+```
+
+脚本会启动 Redis、Qdrant 容器，并在后台启动 Web、worker、beat，无需打开三个终端。第一次启动前仍需按第 3 节配置 `.env`、安装依赖并执行数据库迁移。查看状态或停止：
+
+```powershell
+.\run.cmd status
+.\run.cmd stop
+```
+
+日志保存在被 Git 忽略的 `.runtime/`；启动失败时先查看对应的 `web.err.log`、`worker.err.log` 或 `beat.err.log`。重复运行 `start` 不会重复启动由脚本管理的进程。切换到脚本前，先在原来三个终端按 `Ctrl+C` 结束手动进程；脚本只会停止自己启动的进程。`stop` 还会停止这组 Redis、Qdrant 容器，但保留 Docker 数据卷。
+
+### 手动启动（排查问题时使用）
+
 打开三个 PowerShell 终端，均先 `cd D:\qa-system`，各运行一条：
 
 ```powershell
