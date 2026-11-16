@@ -73,7 +73,7 @@ Web 与 worker 应使用同一份 `.env`。安装阶段 13 依赖并升级 MySQL
 ```
 
 ```powershell
-# 终端 2：Celery worker
+# 终端 2：Celery worker，负责处理新任务
 .\.venv\Scripts\celery.exe -A src.tasks.ingest:celery_app worker --pool=solo --loglevel=info
 ```
 
