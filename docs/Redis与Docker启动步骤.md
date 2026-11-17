@@ -18,7 +18,14 @@ docker compose version
 
 ## 2. 启动 Redis 与 Qdrant
 
-项目根目录的 `compose.ingestion.yaml` 定义 Redis `6379` 和 Qdrant `6333`，只绑定本机 `127.0.0.1`，数据保存在 Docker 命名卷中。执行：
+项目根目录的 `compose.ingestion.yaml` 默认将容器内 Redis `6379` 映射到宿主机 `127.0.0.1:6379`，Qdrant 使用 `127.0.0.1:6333`；数据保存在 Docker 命名卷中。若启动时报 `127.0.0.1:6379 ... bind ... forbidden by its access permissions`，先检查本机 `6379` 是否已被占用：
+
+```powershell
+Get-NetTCPConnection -LocalPort 6379 -State Listen -ErrorAction SilentlyContinue
+Get-Service Redis -ErrorAction SilentlyContinue
+```
+
+如果本机已有 Windows Redis 监听 `6379`，可以只在**这台电脑**被 Git 忽略的 `.env` 中新增 `REDIS_HOST_PORT=16379`。Compose 会将 Docker Redis 发布到 `127.0.0.1:16379`；其他电脑不设置该变量，仍默认使用 `6379`。不要停止原生 Redis 或删除数据卷来处理此冲突。设置后照常执行：
 
 ```powershell
 docker compose -f compose.ingestion.yaml config --quiet
@@ -26,7 +33,7 @@ docker compose -f compose.ingestion.yaml up -d
 docker compose -f compose.ingestion.yaml ps
 ```
 
-`ps` 中两个服务都应为运行状态。`up -d` 在后台启动容器，详见 [Docker Compose 文档](https://docs.docker.com/reference/cli/docker/compose/up/)。首次运行需要拉取镜像，耗时取决于网络。
+`ps` 中两个服务都应为运行状态；端口冲突的电脑应显示 `127.0.0.1:16379->6379/tcp`，其他电脑显示 `127.0.0.1:6379->6379/tcp`。`up -d` 在后台启动容器，详见 [Docker Compose 文档](https://docs.docker.com/reference/cli/docker/compose/up/)。首次运行需要拉取镜像，耗时取决于网络。
 
 检查 Redis 和 Qdrant：
 
@@ -54,6 +61,8 @@ docker compose -f compose.ingestion.yaml logs --tail=80 qdrant
 REDIS_URL=redis://127.0.0.1:6379/0
 QDRANT_URL=http://127.0.0.1:6333
 ```
+
+`REDIS_HOST_PORT` 只决定 Docker Redis 对本机开放哪个端口，不会修改应用的 `REDIS_URL`。如果应用要使用端口为 `16379` 的 Docker Redis，需将本机 `.env` 的 `REDIS_URL` 也设为 `redis://127.0.0.1:16379/0`，并重启 Web、worker、beat。如果原生 Redis `6379` 已有 Celery 队列消息，切换地址不会自动迁移这些消息；先确认旧队列任务如何处理。只为解决 Docker 启动冲突时，可以保留 `REDIS_URL=redis://127.0.0.1:6379/0`，应用继续使用原生 Redis，Docker Redis 虽启动但不会被应用使用。2026-11-17 这台电脑采用后一种方式，旧队列未迁移。
 
 Web 与 worker 应使用同一份 `.env`。安装阶段 13 依赖并升级 MySQL：
 
