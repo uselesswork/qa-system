@@ -1,0 +1,5 @@
+{"id": "direct", "retrieved_sources": ["project.md", "noise.md", "team.md"], "cited_sources": ["project.md"], "answer": "2026年6月18日。", "refused": false, "latency_ms": 4659.872, "model_calls": 2}
+{"id": "cross_document", "retrieved_sources": ["project.md", "noise.md", "team.md"], "cited_sources": ["project.md", "team.md"], "answer": "北岭项目由林岚负责，交付日期是2026年6月18日。", "refused": false, "latency_ms": 5708.791, "model_calls": 2}
+{"id": "followup", "retrieved_sources": ["project.md", "noise.md", "team.md"], "cited_sources": ["project.md"], "answer": "北岭项目的交付日期是2026年6月18日。", "refused": false, "latency_ms": 6961.269, "model_calls": 3}
+{"id": "unanswerable", "retrieved_sources": ["project.md", "team.md", "noise.md"], "cited_sources": [], "answer": "当前知识库没有足以回答这个问题的资料。可补充文档，或主动开启联网搜索。", "refused": true, "latency_ms": 2093.06, "model_calls": 1}
+{"id": "noise", "retrieved_sources": ["project.md", "noise.md", "team.md"], "cited_sources": ["project.md"], "answer": "北岭项目的交付日期是2026年6月18日。", "refused": false, "latency_ms": 4097.946, "model_calls": 2}

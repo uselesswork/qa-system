@@ -1,0 +1,80 @@
+{
+  "sample_count": 5,
+  "answerable_count": 4,
+  "refusal_count": 1,
+  "k": 5,
+  "hit_at_k": 1,
+  "mrr_at_k": 1.0,
+  "citation_precision": 1.0,
+  "refusal_accuracy": 1,
+  "answer_contains_accuracy": 1,
+  "latency_p50_ms": 4659.872,
+  "latency_p95_ms": 6710.773,
+  "model_calls_total": 10,
+  "model_calls_mean": 2,
+  "cases": [
+    {
+      "id": "direct",
+      "category": "直接问答",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 4659.872,
+      "model_calls": 2
+    },
+    {
+      "id": "cross_document",
+      "category": "跨文档",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 5708.791,
+      "model_calls": 2
+    },
+    {
+      "id": "followup",
+      "category": "指代追问",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 6961.269,
+      "model_calls": 3
+    },
+    {
+      "id": "unanswerable",
+      "category": "无答案",
+      "hit_at_k": null,
+      "reciprocal_rank": null,
+      "citation_precision": null,
+      "refusal_correct": true,
+      "answer_contains_all": null,
+      "latency_ms": 2093.06,
+      "model_calls": 1
+    },
+    {
+      "id": "noise",
+      "category": "噪声干扰",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 4097.946,
+      "model_calls": 2
+    }
+  ],
+  "run": {
+    "label": "baseline-2026-11-17-gpt-6-luna",
+    "created_at_utc": "2026-11-17T04:06:15.018571+00:00",
+    "python": "3.11.9",
+    "dataset_sha256": "23c74b05396a1a40d9e0d910075ac85f256c6f76fc8b7ef9a6bfd5f320ca609d",
+    "predictions_sha256": "ac23f913f55aa8834a9e1a2a218820d8030bba47ed39227a79340011bcc24f26",
+    "predictions_path": "eval/baselines/2026-11-17-gpt-6-luna.predictions.jsonl"
+  }
+}

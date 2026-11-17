@@ -41,7 +41,7 @@ def main() -> None:
         "python": platform.python_version(),
         "dataset_sha256": hashlib.sha256(dataset_bytes).hexdigest(),
         "predictions_sha256": hashlib.sha256(predictions_bytes).hexdigest(),
-        "predictions_path": str(args.predictions.resolve()),
+        "predictions_path": args.predictions.as_posix(),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
