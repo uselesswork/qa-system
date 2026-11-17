@@ -30,6 +30,7 @@
 | 第十二阶段 可选联网搜索 | 浏览器真实联网主链路通过 | 输入框按钮默认关闭；任意本人会话可按需联网，网页来源与知识库证据分开标注 | [查看](docs/第十二阶段-可选联网搜索.md) |
 | 第十三阶段 异步索引与任务状态 | 浏览器故障重试及超时任务恢复通过 | Celery/Redis 排队、MySQL 任务状态、页面轮询、重试及恢复 | [查看](docs/第十三阶段-异步索引与任务状态.md) |
 | 第十四阶段 离线评测与可观测性 | 首次真实模型基线已建立 | 固定样本、离线评分器、请求 ID 与阶段耗时 | [查看](docs/第十四阶段-离线评测与可观测性.md) |
+| 第十五阶段 容器化、CI 与交付 | 本机完整栈与持久化验收通过；远程 CI 待运行 | Web/MySQL/Redis/Qdrant/worker/beat、迁移、备份恢复与故障处理 | [查看](docs/运行与部署.md) |
 
 每篇文档依次说明成果总览、具体工作、文件职责、数据流、验证和限制。文件按当前职责归类，不等于某一次提交的准确新增清单。原记录中的“模块 17”只是空标题，与本计划新增的“阶段 17”不同；阶段 11～12 的浏览器主链路和阶段 13 的超时任务恢复于 2026-11-17 补验收。
 
@@ -78,14 +79,15 @@
 
    ```powershell
    py -3 -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install "pdfplumber>=0.10.0" "numpy>=1.24" "openai>=1.28.0" "fastapi>=0.110" "uvicorn>=0.27" "pydantic>=2.5" "python-dotenv>=1.0.0" "pwdlib[argon2]>=0.3,<1"
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
    ```
 
-   使用 LangSmith 追踪时，另装 `"langsmith>=0.6,<1"`；旧实验环境还列过 `"langchain>=0.1.16"` 与 `"langchain-openai>=0.0.6"`，当前 Web 代码没有直接导入这两个包。依赖版本与安装方式以后只在本 README 更新。
+   `requirements.txt` 是 Web、worker 和容器共享的依赖清单；运行无密钥测试时安装 `requirements-dev.txt`。LangSmith 包已安装，但只有显式配置追踪变量才会上报。旧实验环境列过 LangChain 包，当前 Web 不直接依赖。
 
 2. 复制 `.env.example` 为本地 `.env`，填入自己的 `OPENAI_API_KEY` 和 `DATABASE_URL`，并先执行下文的 `alembic upgrade head`。应用和实验脚本均从根目录 `.env` 读取配置，进程环境变量优先。本地 `.env` 已被 Git 忽略，不要提交真实密钥。
    如果要启用异步索引，启动 Web 前按[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)启动 Redis、Qdrant，并在 `.env` 配置 `REDIS_URL`、`QDRANT_URL`；不配置时沿用同步上传。
    本机异步模式完成一次性配置后，可在项目根目录运行 `.\run.cmd`，一条命令启动 Docker 中的 Redis、Qdrant 和后台 Web、worker、beat；`.\run.cmd status` 查看状态，`.\run.cmd stop` 停止。Docker Desktop 与 MySQL 需先运行。
+   若要把 Web、MySQL、Redis、Qdrant、worker、beat 全部放进容器，使用独立的 [`compose.yaml` 与运行手册](docs/运行与部署.md)；该方式使用 `.env.compose` 和新的命名卷，与 `run.cmd` 的本机 MySQL 数据不自动共享。
    Docker Redis 的宿主机端口默认是 `6379`。若该端口已被本机其他 Redis 占用，只在这台电脑被 Git 忽略的 `.env` 中添加 `REDIS_HOST_PORT=16379`；其他电脑不设置该变量，仍按原端口启动。`REDIS_HOST_PORT` 只控制 Docker 端口映射，应用实际连接地址由 `REDIS_URL` 决定；两者的区别和切换注意事项见[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)。
 3. 从项目根目录启动服务：
 
@@ -99,13 +101,13 @@
 
 ## 第十阶段知识库后端
 
-知识库后端使用 SQLAlchemy 2.x、Alembic、PyMySQL、Qdrant Python 客户端和 multipart 解析器；依赖只在本 README 记录，不维护 requirements 文本文件：
+知识库后端使用 SQLAlchemy 2.x、Alembic、PyMySQL、Qdrant Python 客户端和 multipart 解析器；依赖统一记录在 `requirements.txt`：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install "SQLAlchemy>=2.0,<3" "alembic>=1.13,<2" "PyMySQL>=1.1,<2" "qdrant-client>=1.12,<2" "python-multipart>=0.0.9,<1"
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-阶段 13 异步索引另需 `.\.venv\Scripts\python.exe -m pip install "celery[redis]>=5.5,<5.7" "packaging<26"`，并运行 Redis、独立 Qdrant、Celery worker 与 beat；见[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)。
+阶段 13 的 Celery/Redis 依赖也包含在该文件；异步模式仍需运行 Redis、独立 Qdrant、Celery worker 与 beat，见[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)。
 
 本机 MySQL 8.0 的 `qa_system` 已由用户创建，并已应用初始迁移。换一台机器时，先用 MySQL 管理员在本机执行 `scripts/create_database.sql`；把有该库权限的连接账号写入 Git 忽略的 `.env` 中的 `DATABASE_URL`。示例 URL 的 `qa_app` 是用户名、`YOUR_PASSWORD` 是密码、`qa_system` 是数据库名；密码中的 `@`、`:`、`/` 等字符需做 URL 编码。不要将真实连接串提交或发送到聊天。
 
@@ -166,10 +168,10 @@ LangSmith 是可选追踪：在 `.env` 设置 `LANGSMITH_TRACING=true`、`LANGSM
 
 `tests/` 是默认收集的无密钥回归套件；`pytest.ini` 将默认范围限定于此，根目录 `conftest.py` 在 pytest 中关闭 LangSmith 追踪，避免测试内容意外外发。`src/test/` 保留 Loader、切分、Embedding、向量库、检索、Prompt、LLM、RAG、重排、聚合、语义切分及多轮对话的旧实验脚本，其中部分需要真实模型密钥或手工参数，不能直接当作默认 pytest 套件。
 
-运行测试前先安装上面的 Web 与数据库依赖，再安装 pytest 和用于 HTTP 冒烟的 httpx；默认命令不调用真实模型或真实 MySQL：
+运行测试前安装开发依赖；默认命令不调用真实模型或真实 MySQL：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install "pytest>=8,<10" "httpx>=0.27"
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
@@ -225,7 +227,7 @@ docs/                            本项目的阶段说明
 
 ## 后续开发计划
 
-> 状态：2026-11-17 核对。阶段 9 的离线工程基线已完成；阶段 10 的真实模型单库问答、重启恢复、浏览器多库隔离与测试文档删除已通过。阶段 11 的浏览器注册登录、建库上传、连续追问和刷新恢复已通过；阶段 12 的旧会话与无知识库会话真实联网已通过；阶段 13 的 Qdrant 故障重试和超时 `indexing` 任务自动恢复已通过；阶段 14 的五条固定样本真实模型基线已保存。搜索异常、真实处理中强杀 worker、更多评测样本与费用数据仍待补充；阶段 15～17 仍是规划。实际完成情况以代码、测试和阶段文档为准。
+> 状态：2026-11-17 核对。阶段 9 的离线工程基线已完成；阶段 10 的真实模型单库问答、重启恢复、浏览器多库隔离与测试文档删除已通过。阶段 11 的浏览器注册登录、建库上传、连续追问和刷新恢复已通过；阶段 12 的旧会话与无知识库会话真实联网已通过；阶段 13 的 Qdrant 故障重试和超时 `indexing` 任务自动恢复已通过；阶段 14 的五条固定样本真实模型基线已保存。阶段 15 的完整容器栈、CI 文件和运行手册已接入，本机 8091 独立栈启动、真实问答及容器重建恢复通过；GitHub CI 待推送后验证。阶段 16～17 仍是规划。实际完成情况以代码、测试和阶段文档为准。
 
 ### 目标与当前基线
 
@@ -243,11 +245,11 @@ docs/                            本项目的阶段说明
 | 12 | 可选联网搜索 | 显式选择联网、网页引用、知识库来源隔离 | 必做 | 视接口方案而定 | 浏览器真实联网及历史恢复通过；异常场景待验收 |
 | 13 | 异步索引与任务状态 | Redis、Celery、幂等任务 | 必做 | 4～5 天 | 浏览器故障重试及超时任务自动恢复通过，见[阶段说明](docs/第十三阶段-异步索引与任务状态.md) |
 | 14 | 离线评测与可观测性 | 评测集、指标、结构化日志、可选 LangSmith | 必做 | 3～4 天 | 五条固定样本真实模型基线已保存，见[阶段说明](docs/第十四阶段-离线评测与可观测性.md) |
-| 15 | 容器化、CI 与交付 | Docker Compose、GitHub Actions、运行手册 | 必做 | 3～4 天 | 未实现 |
+| 15 | 容器化、CI 与交付 | Docker Compose、GitHub Actions、运行手册 | 必做 | 3～4 天 | 本机完整栈、持久化和备份验收通过；GitHub CI 待推送运行，见[运行文档](docs/运行与部署.md) |
 | 16 | 检索质量与安全加固 | 混合检索、引用校验、限流与越权测试 | 增强 | 视基线而定 | 未实现 |
 | 17 | 产品化与求职展示 | 知识库管理页面、演示数据、架构图、性能报告 | 增强 | 视基线而定 | 未实现 |
 
-上述阶段 11～14 的主链路补验收已于 2026-11-17 完成，随后推进阶段 15 的最小可验收版本。预计投入只是估计；若进度紧张，先保证“上传 → 索引 → 问答 → 引用 → 重启后仍可访问 → 自动测试 → 一键启动”的闭环，阶段 16～17 不挤占核心链路。
+阶段 15 已加入完整容器栈、CI 和交付文档；验收证据见[运行与部署](docs/运行与部署.md)。预计投入只是估计；阶段 16～17 不挤占核心链路。
 
 ### 逐阶段实施方案
 
@@ -307,7 +309,9 @@ docs/                            本项目的阶段说明
 
 **要做什么**：用 Docker Compose 运行 API、MySQL、Qdrant、Redis 和 worker；提供初始化与迁移、健康检查、备份及故障处理说明。GitHub Actions 运行静态检查、无密钥单元测试与必要的服务集成测试；真实模型联调保留为手动可选步骤。
 
-**拟涉及文件**：`Dockerfile`、`compose.yaml`、`.dockerignore`、`.github/workflows/ci.yml`、`docs/运行与部署.md`、`docs/故障排查.md`。
+**涉及文件**：`Dockerfile`、`compose.yaml`、`.dockerignore`、`.github/workflows/ci.yml`、`docs/运行与部署.md`、`docs/故障排查.md`。
+
+**当前实现与验证**：已加入上述文件及 `requirements.txt`、`requirements-dev.txt`、`scripts/smoke_services.py`。容器栈使用独立 MySQL/Qdrant/Redis/上传命名卷，一次性迁移成功后启动 Web 与 worker。本机独立 8091 栈完成存储冒烟、真实上传问答、容器重建恢复及卷备份；无密钥测试 **49 passed**。CI 文件已准备，远程执行待推送后核对。详见[运行与部署](docs/运行与部署.md)。
 
 **验收**：新环境按文档和占位配置能启动；容器重建后数据库与向量数据仍在；CI 在干净检出上通过；文档说明停止、备份恢复、日志查看和回滚。只验证本机 Docker 时，不写成已经完成公网部署。
 
@@ -345,6 +349,6 @@ docs/                            本项目的阶段说明
 
 ### 下一项工作
 
-阶段 11～14 的主链路补验收已记录；下一项推进阶段 15 的最小可验收版本。联网异常场景、强杀运行中 worker、评测扩样和费用记录可作为后续补验收。旧库保持未归属，需经明确指定才能迁给账号。
+阶段 11～14 的主链路补验收已记录，阶段 15 的容器与 CI 交付文件已加入。联网异常场景、强杀运行中 worker、评测扩样和费用记录可作为后续补验收。旧库保持未归属，需经明确指定才能迁给账号。
 
 > 阶段 9 是离线工程基线；阶段 10 通过临时 SQLite 自动测试、本机真实 MySQL + Qdrant 假模型冒烟、手动真实模型单库问答与重启恢复。阶段 11～12 已补浏览器注册登录、建库上传、连续追问、刷新恢复、多库隔离及可选联网；阶段 13 已验证浏览器故障重试和超时索引任务自动恢复；阶段 14 的首次真实模型小样本基线已保存。各项剩余边界见对应阶段文档。

@@ -14,3 +14,5 @@ data/qdrant/
 eval/predictions.jsonl
 eval/reports/
 /.runtime/
+.env.compose
+/backups/

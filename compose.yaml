@@ -1,0 +1,103 @@
+name: qa-system-full
+
+x-app: &app
+  build: .
+  env_file: .env.compose
+  environment:
+    DATABASE_URL: mysql+pymysql://qa_app:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql:3306/qa_system?charset=utf8mb4
+    REDIS_URL: redis://redis:6379/0
+    QDRANT_URL: http://qdrant:6333
+  volumes:
+    - uploads_data:/app/data/uploads
+  restart: unless-stopped
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: qa_system
+      MYSQL_USER: qa_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.5
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 10
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "celery", "-A", "src.tasks.ingest:celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  beat:
+    <<: *app
+    command: ["python", "-m", "celery", "-A", "src.tasks.ingest:celery_app", "beat", "--loglevel=info", "--schedule", "/app/.runtime/celerybeat-schedule"]
+    volumes:
+      - uploads_data:/app/data/uploads
+      - beat_data:/app/.runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  qdrant_data:
+  redis_data:
+  uploads_data:
+  beat_data:

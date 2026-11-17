@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m compileall -q app src eval scripts migrations
+      - run: python -m pytest -q
+        env:
+          REDIS_URL: ""
+          QDRANT_URL: ""
+          LANGSMITH_TRACING: "false"
+
+  service-smoke:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_password
+          MYSQL_DATABASE: qa_system
+          MYSQL_USER: qa_app
+          MYSQL_PASSWORD: ci_app_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysql -uqa_app -pci_app_password -e 'SELECT 1'"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      qdrant:
+        image: qdrant/qdrant:v1.15.5
+        ports:
+          - 6333:6333
+    env:
+      DATABASE_URL: mysql+pymysql://qa_app:ci_app_password@127.0.0.1:3306/qa_system?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/0
+      QDRANT_URL: http://127.0.0.1:6333
+      LANGSMITH_TRACING: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m alembic upgrade head
+      - run: |
+          for attempt in {1..15}; do
+            python -m scripts.smoke_services && exit 0
+            sleep 2
+          done
+          exit 1

@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.env
+.env.*
+!.env.compose.example
+__pycache__
+.pytest_cache
+.ruff_cache
+.runtime
+data/uploads
+data/qdrant
+eval/predictions.jsonl
+eval/reports
+backups
+*.pyc
