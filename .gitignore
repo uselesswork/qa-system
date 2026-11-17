@@ -15,4 +15,5 @@ eval/predictions.jsonl
 eval/reports/
 /.runtime/
 .env.compose
+!.env.compose.example
 /backups/
