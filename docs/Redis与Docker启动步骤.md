@@ -37,6 +37,8 @@ Invoke-RestMethod http://127.0.0.1:6333/collections
 
 Redis 应返回 `PONG`，这是 [Redis 官方的连接检查命令](https://redis.io/docs/latest/commands/ping/)；Qdrant 应返回包含 `collections` 的 JSON。这里使用**容器内**的 `redis-cli`。本机现有 `D:\redis\redis-cli.exe` 曾出现 Windows DLL 重定位错误，无需依赖它。
 
+如果浏览器删除文档提示“删除向量失败”，但 Qdrant 容器仍为 `Up`，可先检查本机 Qdrant HTTP 是否返回 200。Windows 系统代理可能让 Python HTTP 客户端访问 `127.0.0.1:6333` 时收到 502；项目对本机 Qdrant 地址已禁用客户端的环境代理。更新代码后需重启 Web 与 worker，再在页面点击“删除文档”重试。
+
 若服务没起来，分别查看日志：
 
 ```powershell

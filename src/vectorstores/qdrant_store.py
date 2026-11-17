@@ -1,6 +1,7 @@
 """按知识库过滤的 Qdrant 向量存储；本地模式可持久化到磁盘。"""
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 from qdrant_client import QdrantClient, models
@@ -30,7 +31,10 @@ class QdrantVectorStore(BaseVectorStore):
 
     @classmethod
     def remote(cls, url: str, collection: str = "qa_chunks"):
-        return cls(QdrantClient(url=url), collection)
+        hostname = urlparse(url).hostname
+        # Windows 系统代理可能拦截 127.0.0.1，并对本机 Qdrant 返回 502。
+        options = {"trust_env": False} if hostname in {"127.0.0.1", "localhost", "::1"} else {}
+        return cls(QdrantClient(url=url, **options), collection)
 
     def ensure_collection(self, dimension: int) -> None:
         if self.client.collection_exists(self.collection):
