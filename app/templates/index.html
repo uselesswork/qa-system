@@ -120,6 +120,7 @@
   const webMode = document.querySelector("#webMode");
   let busy = false;
   let uploading = false;
+  let reloading = false;
   let webEnabled = false;
   let sessionId = null;
   let sessionScope = null;
@@ -130,6 +131,7 @@
   let documents = [];
   let csrfToken = null;
   let history = [];
+  let reloadWhenReady = null;
   localStorage.removeItem("rag-chat-session");
   localStorage.removeItem("rag-chat-history");
   async function api(path, options = {}) {
@@ -156,6 +158,13 @@
     const target = document.querySelector("#knowledgeStatus");
     target.textContent = message;
     target.classList.toggle("error", error);
+  }
+  function reloadWorkspace() {
+    reloading = true;
+    sessionStorage.setItem("rag-reload-selection", JSON.stringify({
+      sessionId, knowledgeBaseId:currentKbId, draft:input.value
+    }));
+    window.location.reload();
   }
   function canAsk() {
     if (webEnabled) return true;
@@ -202,6 +211,11 @@
   async function loadDocuments() {
     documents = currentKbId
       ? await api(`/knowledge-bases/${encodeURIComponent(currentKbId)}/documents`) : [];
+    if (reloadWhenReady && reloadWhenReady.knowledgeBaseId === currentKbId) {
+      const uploaded = documents.find(item => item.id === reloadWhenReady.documentId);
+      if (uploaded?.status === "ready") { reloadWhenReady = null; reloadWorkspace(); return; }
+      if (uploaded?.status === "failed") reloadWhenReady = null;
+    }
     const container = document.querySelector("#documents");
     container.replaceChildren();
     if (!currentKbId && sessionId && sessionScope === null && sessionType === "knowledge")
@@ -251,6 +265,7 @@
           await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(item.id)}`, { method:"DELETE" });
           deleted = true;
         } catch (error) { setKnowledgeStatus(error.message, true); }
+        if (deleted) { reloadWorkspace(); return; }
         try { await loadDocuments(); render(); }
         catch (error) { setKnowledgeStatus(`列表刷新失败：${error.message}`, true); }
         finally { setBusy(false); }
@@ -315,8 +330,18 @@
     document.querySelector("#username").textContent = user.username;
     showLoggedIn(true);
     try {
-      await loadKnowledgeBases();
+      let restored = null;
+      try { restored = JSON.parse(sessionStorage.getItem("rag-reload-selection")); }
+      catch { /* Ignore an invalid saved selection. */ }
+      sessionStorage.removeItem("rag-reload-selection");
+      await loadKnowledgeBases(restored?.knowledgeBaseId);
       const list = await loadSessions();
+      if (restored?.draft) { input.value = restored.draft; input.dispatchEvent(new Event("input")); }
+      if (restored?.sessionId && list.some(item => item.id === restored.sessionId)) {
+        await openSession(restored.sessionId);
+        return;
+      }
+      if (restored) { render(); return; }
       const recentScoped = list.find(item => item.knowledge_base_id &&
         knowledgeBases.some(kb => kb.id === item.knowledge_base_id));
       if (recentScoped) await openSession(recentScoped.id);
@@ -514,11 +539,14 @@
     try {
       const result = await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents`, { method:"POST", body:form });
       fileInput.value = "";
+      if (result.status === "ready") { reloadWorkspace(); return; }
+      if (result.document_id)
+        reloadWhenReady = { knowledgeBaseId:kbId, documentId:result.document_id };
       setKnowledgeStatus(result.document_id ? "上传完成，索引任务已排队。" : "上传并建立索引成功，现在可以提问。", false);
     } catch (error) { setKnowledgeStatus(error.message, true); }
     finally {
       uploading = false; button.disabled = false;
-      await loadDocuments(); render();
+      if (!reloading) { await loadDocuments(); render(); }
     }
   });
   setInterval(() => {
