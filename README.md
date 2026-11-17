@@ -81,7 +81,7 @@
    .\.venv\Scripts\python.exe -m pip install "pdfplumber>=0.10.0" "numpy>=1.24" "openai>=1.28.0" "fastapi>=0.110" "uvicorn>=0.27" "pydantic>=2.5" "python-dotenv>=1.0.0" "pwdlib[argon2]>=0.3,<1"
    ```
 
-   原实验使用 LangSmith 追踪时，可另装 `"langsmith>=0.1.0"`；旧实验环境还列过 `"langchain>=0.1.16"` 与 `"langchain-openai>=0.0.6"`，当前 Web 代码没有直接导入这两个包。依赖版本与安装方式以后只在本 README 更新。
+   使用 LangSmith 追踪时，另装 `"langsmith>=0.6,<1"`；旧实验环境还列过 `"langchain>=0.1.16"` 与 `"langchain-openai>=0.0.6"`，当前 Web 代码没有直接导入这两个包。依赖版本与安装方式以后只在本 README 更新。
 
 2. 复制 `.env.example` 为本地 `.env`，填入自己的 `OPENAI_API_KEY` 和 `DATABASE_URL`，并先执行下文的 `alembic upgrade head`。应用和实验脚本均从根目录 `.env` 读取配置，进程环境变量优先。本地 `.env` 已被 Git 忽略，不要提交真实密钥。
    如果要启用异步索引，启动 Web 前按[Redis 与 Docker 启动步骤](docs/Redis与Docker启动步骤.md)启动 Redis、Qdrant，并在 `.env` 配置 `REDIS_URL`、`QDRANT_URL`；不配置时沿用同步上传。
@@ -132,6 +132,10 @@
 联网搜索使用独立的 Responses API `web_search` 调用，默认模型为 `gpt-6-luna`，可通过 `.env` 的 `WEB_SEARCH_MODEL` 覆盖。通常只发送本次问题；“重新回答”等明确追问会附带同一会话的上一条用户问题，不发送知识库文档或整段会话历史。仍使用 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。无效密钥会让上传索引和联网搜索都失败。网页搜索工具调用与模型 token 分别计费，切换到 Luna 只降低模型 token 部分的费用。
 
 启动仍要求配置 `OPENAI_API_KEY`，但不再在 lifespan 阶段对 `data/multi_document_examples` 计算 Embedding。上传与问答时需要模型服务可用。`/docs` 是 FastAPI 自动生成的接口文档；写接口在登录 Cookie 外还需 `X-CSRF-Token`，其值可从登录响应或 `GET /auth/me` 获取。
+
+LangSmith 是可选追踪：在 `.env` 设置 `LANGSMITH_TRACING=true`、`LANGSMITH_API_KEY`、`LANGSMITH_PROJECT`，重启 Web 和 Celery worker 后，新请求会在指定目标下出现。知识库问答、联网搜索、已保存网页回答追问及文档索引有独立追踪；默认 OpenAI 聊天和联网搜索客户端也记录模型调用。项目使用原生 OpenAI SDK，单独填写 LangSmith 环境变量不会自动追踪这些调用。
+
+当前 LangSmith 工作区按 Agent 和环境组织追踪。使用本机已安装的 SDK 时，`LANGSMITH_PROJECT` 应填所选 Agent 环境的 `tracer_session_name`，名称区分大小写；截图中的 Agent `LLM` 的 Production 环境对应 `LLM`，小写 `llm` 是另一个 Agent。不要单独设置 `LANGSMITH_AGENT_ENVIRONMENT` 代替目标名称。运行 `.\.venv\Scripts\python.exe -m scripts.check_langsmith --show-agents` 可核对 Agent 与环境映射；`--show-runs` 只读查看目标下最近的追踪名称和时间；`--smoke-trace` 会写入一条不含业务数据的诊断追踪并读取验证。网页上到左侧 **Tracing**，选择相同 Agent 和 Production 查看逐条记录；Monitoring 图表可能稍晚汇总。旧目标中的追踪不会自动搬到新目标。
 
 ## 问答接口
 

@@ -9,17 +9,9 @@ from src.rerankers.answer_aware_reranker import AnswerAwareReranker
 from src.retrievers.base import BaseRetriever
 from src.vectorstores.base import BaseVectorStore
 from src.vectorstores.search_result import SearchResult
+from src.observability.tracing import traceable
 
 from .result import RAGResult, RAGStreamEvent
-
-try:
-    from langsmith import traceable
-except ImportError:
-    def traceable(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-
 
 class RAGCore:
     def __init__(

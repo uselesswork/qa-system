@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from src.chat.repository import ChatRepository
 from src.chat.service import LLMQueryRewriter
 from src.rag.rag_core import RAGCore
+from src.observability.tracing import traceable
 
 
 class PersistentChatService:
@@ -14,6 +15,8 @@ class PersistentChatService:
         self.rag_core = rag_core
         self.rewriter = rewriter
 
+    @traceable(name="knowledge_chat", run_type="chain",
+               process_inputs=lambda inputs: {"message": inputs.get("message")})
     async def chat(self, user_id: str, session_id: str, message: str) -> dict:
         if not message.strip():
             raise ValueError("消息不能为空。")

@@ -2,6 +2,7 @@ import time
 from openai import AsyncOpenAI
 from .base import BaseLLM
 from .answer import LLMAnswer
+from src.observability.tracing import wrap_openai
 
 
 class OpenAIChatLLM(BaseLLM):
@@ -12,7 +13,7 @@ class OpenAIChatLLM(BaseLLM):
             temperature: float | None = None,
             client: AsyncOpenAI | None = None,
     ):
-        self.client = client or AsyncOpenAI()
+        self.client = client if client is not None else wrap_openai(AsyncOpenAI())
         self.model = model
         self.temperature = temperature
 

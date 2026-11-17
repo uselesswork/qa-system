@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlsplit
 
 from openai import AsyncOpenAI
+from src.observability.tracing import traceable, wrap_openai
 
 
 class WebSearchUnavailable(Exception):
@@ -12,9 +13,11 @@ class WebSearchUnavailable(Exception):
 
 class WebSearchService:
     def __init__(self, client: AsyncOpenAI | None = None, model: str | None = None):
-        self.client = client or AsyncOpenAI()
+        self.client = client if client is not None else wrap_openai(AsyncOpenAI())
         self.model = model or os.getenv("WEB_SEARCH_MODEL", "gpt-6-luna")
 
+    @traceable(name="web_search", run_type="chain",
+               process_inputs=lambda inputs: {"question": inputs.get("question")})
     async def search(self, question: str) -> dict:
         response = await self.client.responses.create(
             model=self.model,

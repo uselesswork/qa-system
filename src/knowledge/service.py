@@ -16,6 +16,7 @@ from src.loaders.txt_loader import TxtLoader
 from src.processors.cleaner import TextCleaner
 from src.processors.semantic.semantic_splitter import SemanticSplitter
 from src.vectorstores.qdrant_store import QdrantVectorStore, VectorDimensionError
+from src.observability.tracing import traceable
 
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -111,6 +112,8 @@ class KnowledgeService:
             task.error_message = doc.error_message = None
             return self.task_json(task)
 
+    @traceable(name="index_document", run_type="chain",
+               process_inputs=lambda inputs: {"task_id": inputs.get("task_id")})
     async def run_task(self, task_id: str) -> None:
         with self.sessions.begin() as session:
             task = session.get(IngestionTask, task_id, with_for_update=True)
@@ -218,6 +221,9 @@ class KnowledgeService:
                 )
             ))
 
+    @traceable(name="upload_and_index_document", run_type="chain",
+               process_inputs=lambda inputs: {"filename": inputs.get("filename"),
+                                              "size_bytes": len(inputs.get("content") or b"")})
     async def upload(self, kb_id: str, filename: str, content: bytes,
                      owner_id: str | None = None) -> dict:
         self.get_kb(kb_id, owner_id)

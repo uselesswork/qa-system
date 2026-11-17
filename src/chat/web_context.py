@@ -1,6 +1,7 @@
 """会话内已保存的网页回答，仅作为该会话的可追溯上下文。"""
 
 import json
+from src.observability.tracing import traceable
 
 
 def web_turns(messages: list[dict], limit: int = 3) -> list[dict]:
@@ -19,6 +20,8 @@ def web_turns(messages: list[dict], limit: int = 3) -> list[dict]:
     return turns[-limit:]
 
 
+@traceable(name="saved_web_context", run_type="chain",
+           process_inputs=lambda inputs: {"question": inputs.get("question")})
 async def answer_from_web_context(repository, llm, user_id: str, session_id: str,
                                   question: str) -> dict | None:
     turns = web_turns(repository.get(user_id, session_id)["messages"])
