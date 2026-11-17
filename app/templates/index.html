@@ -25,6 +25,7 @@
     .knowledge-panel button:disabled { opacity:.55; cursor:not-allowed; }
     .doc-item { padding:7px 0; border-top:1px solid var(--line); font-size:12px; overflow-wrap:anywhere; }
     .doc-item button { margin-left:6px; padding:3px 6px; font-size:11px; }
+    .doc-item .delete-document { background:#feeceb; color:#b42318; }
     .status { color:var(--muted); font-size:12px; }
     .status.error { color:#b42318; }
     .scope { padding:8px 24px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
@@ -212,11 +213,12 @@
     documents.forEach(item => {
       const row = element("div", "doc-item");
       const labels = { ready:"已索引", failed:"索引失败", pending:"待索引", indexing:"索引中" };
-      row.append(element("span", "", `${item.original_name} · ${labels[item.status] || item.status}${item.status === "failed" && item.error_message ? `：${item.error_message}` : ""}`));
+      row.append(element("span", "", `${item.original_name} · ${labels[item.status] || item.status}${item.error_message && ["failed", "pending"].includes(item.status) ? `：${item.error_message}` : ""}`));
       if (item.status === "failed" || item.status === "ready") {
         const retry = element("button", "", item.status === "failed" ? "重试索引" : "重建索引");
         retry.type = "button";
         retry.addEventListener("click", async () => {
+          if (busy || uploading) return;
           const kbId = currentKbId;
           retry.disabled = true;
           setKnowledgeStatus("正在重试索引，请稍候……");
@@ -231,6 +233,31 @@
         });
         row.append(retry);
       }
+      const remove = element("button", "delete-document", "删除文档");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `删除文档：${item.original_name}`);
+      remove.disabled = item.status === "indexing" ||
+        (item.status === "pending" && item.error_message !== "删除向量失败，请重试删除。");
+      if (remove.disabled) remove.title = "索引任务进行中，请完成后再删除";
+      remove.addEventListener("click", async () => {
+        if (busy || uploading || remove.disabled) return;
+        if (!window.confirm(`确定删除“${item.original_name}”吗？上传文件、片段和索引将一并删除；历史会话中的已有回答仍会保留。`)) return;
+        const kbId = currentKbId;
+        setBusy(true);
+        container.querySelectorAll("button").forEach(button => { button.disabled = true; });
+        setKnowledgeStatus("正在删除文档……", false);
+        let deleted = false;
+        try {
+          await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(item.id)}`, { method:"DELETE" });
+          deleted = true;
+        } catch (error) { setKnowledgeStatus(error.message, true); }
+        try { await loadDocuments(); render(); }
+        catch (error) { setKnowledgeStatus(`列表刷新失败：${error.message}`, true); }
+        finally { setBusy(false); }
+        if (deleted && !document.querySelector("#knowledgeStatus").classList.contains("error"))
+          setKnowledgeStatus(`已删除“${item.original_name}”。`, false);
+      });
+      row.append(remove);
       container.append(row);
     });
     updateComposer();
@@ -495,7 +522,8 @@
     }
   });
   setInterval(() => {
-    if (!currentKbId || uploading || busy || !documents.some(item => ["pending", "indexing"].includes(item.status))) return;
+    if (!currentKbId || uploading || busy || !documents.some(item =>
+      ["pending", "indexing"].includes(item.status) && item.error_message !== "删除向量失败，请重试删除。")) return;
     loadDocuments().then(render).catch(error => setKnowledgeStatus(error.message, true));
   }, 3000);
   document.querySelector("#authPanel").addEventListener("submit", async event => {

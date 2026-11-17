@@ -325,6 +325,10 @@ class KnowledgeService:
         try:
             self.vectors.delete_document(document_id)
         except Exception as exc:
+            with self.sessions.begin() as session:
+                doc = session.get(Document, document_id)
+                if doc is not None:
+                    doc.error_message = "删除向量失败，请重试删除。"
             raise KnowledgeError("删除向量失败；文档保留为 pending，可重试。", 503) from exc
         with self.sessions.begin() as session:
             session.delete(session.get(Document, document_id))

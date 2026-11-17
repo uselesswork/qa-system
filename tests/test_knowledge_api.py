@@ -231,3 +231,39 @@ def test_upload_validation_and_index_failure(tmp_path):
         engine.dispose()
 
     asyncio.run(scenario())
+
+
+def test_delete_vector_failure_keeps_visible_retry_reason(tmp_path, monkeypatch):
+    async def scenario():
+        engine, service = make_service(tmp_path)
+        app.state.knowledge_service = service
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await login_client(client, engine)
+            kb_id = (await client.post("/knowledge-bases", json={"name": "删除重试"})).json()["id"]
+            uploaded = await client.post(
+                f"/knowledge-bases/{kb_id}/documents",
+                files={"file": ("retry.md", "# 删除重试\n测试内容".encode("utf-8"))},
+            )
+            assert uploaded.status_code == 201
+            doc_id = uploaded.json()["id"]
+            original_delete = service.vectors.delete_document
+
+            def fail_delete(_):
+                raise RuntimeError("vector store unavailable")
+
+            monkeypatch.setattr(service.vectors, "delete_document", fail_delete)
+            failed = await client.delete(f"/knowledge-bases/{kb_id}/documents/{doc_id}")
+            assert failed.status_code == 503
+            docs = (await client.get(f"/knowledge-bases/{kb_id}/documents")).json()
+            assert docs[0]["status"] == "pending"
+            assert docs[0]["error_message"] == "删除向量失败，请重试删除。"
+
+            monkeypatch.setattr(service.vectors, "delete_document", original_delete)
+            retried = await client.delete(f"/knowledge-bases/{kb_id}/documents/{doc_id}")
+            assert retried.status_code == 204
+            assert (await client.get(f"/knowledge-bases/{kb_id}/documents")).json() == []
+        service.vectors.close()
+        engine.dispose()
+
+    asyncio.run(scenario())
