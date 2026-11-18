@@ -7,7 +7,7 @@ from threading import Lock
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
 from openai import APIError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.db.session import create_database_engine, create_session_factory
 from src.embeddings.openai_embedding import OpenAIEmbedding
@@ -18,6 +18,7 @@ from src.vectorstores.qdrant_store import QdrantVectorStore
 from src.tasks.ingest import dispatch_ingestion
 from app.api.auth import require_csrf, require_user
 from src.auth.service import AuthContext
+from src.security.rate_limit import enforce_limit
 
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
@@ -31,7 +32,7 @@ class KnowledgeBaseCreate(BaseModel):
 
 
 class KnowledgeAsk(BaseModel):
-    query: str
+    query: str = Field(max_length=2000)
 
 
 def get_service(request: Request) -> KnowledgeService:
@@ -127,11 +128,12 @@ def async_index_enabled() -> bool:
 
 
 @router.post("/{kb_id}/documents", status_code=201)
-async def upload_document(kb_id: str, response: Response, file: UploadFile = File(...),
+async def upload_document(kb_id: str, response: Response, request: Request, file: UploadFile = File(...),
                           user: AuthContext = Depends(require_csrf),
                           service: KnowledgeService = Depends(get_service)):
     try:
         content = await file.read(MAX_FILE_BYTES + 1)
+        enforce_limit(request, user, "upload", 20)
         if async_index_enabled():
             task = service.queue_upload(kb_id, file.filename or "", content, user.user_id)
             try:
@@ -213,6 +215,7 @@ async def ask_knowledge_base(kb_id: str, body: KnowledgeAsk, request: Request,
     if core is None:
         raise HTTPException(503, "问答模型尚未就绪。")
     scoped_answer_core = scoped_core(core, service, ready_ids, kb_id)
+    enforce_limit(request, user, "knowledge", 120)
     try:
         result = await scoped_answer_core.answer(body.query)
     except APIError as exc:

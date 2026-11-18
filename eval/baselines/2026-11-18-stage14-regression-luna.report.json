@@ -1,0 +1,85 @@
+{
+  "sample_count": 5,
+  "answerable_count": 4,
+  "refusal_count": 1,
+  "k": 5,
+  "hit_at_k": 1,
+  "mrr_at_k": 1.0,
+  "citation_precision": 1.0,
+  "refusal_accuracy": 1,
+  "answer_contains_accuracy": 1,
+  "latency_p50_ms": 7367.132,
+  "latency_p95_ms": 10141.926,
+  "model_calls_total": 10,
+  "model_calls_mean": 2,
+  "cases": [
+    {
+      "id": "direct",
+      "category": "直接问答",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 10552.52,
+      "model_calls": 2
+    },
+    {
+      "id": "cross_document",
+      "category": "跨文档",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 8499.548,
+      "model_calls": 2
+    },
+    {
+      "id": "followup",
+      "category": "指代追问",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 7367.132,
+      "model_calls": 3
+    },
+    {
+      "id": "unanswerable",
+      "category": "无答案",
+      "hit_at_k": null,
+      "reciprocal_rank": null,
+      "citation_precision": null,
+      "refusal_correct": true,
+      "answer_contains_all": null,
+      "latency_ms": 2474.862,
+      "model_calls": 1
+    },
+    {
+      "id": "noise",
+      "category": "噪声干扰",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 5254.866,
+      "model_calls": 2
+    }
+  ],
+  "run": {
+    "label": "stage14-regression-2026-11-18-gpt-6-luna",
+    "created_at_utc": "2026-11-18T02:44:04.064619+00:00",
+    "python": "3.11.9",
+    "dataset_sha256": "23c74b05396a1a40d9e0d910075ac85f256c6f76fc8b7ef9a6bfd5f320ca609d",
+    "predictions_sha256": "d5a8c185a5cf7fe24d10305edee3f28ae284f6469e9c7c0014edcdfd243322e9",
+    "predictions_path": "eval/baselines/2026-11-18-stage14-regression-luna.predictions.jsonl",
+    "corpus_sha256": {
+      "noise.md": "9ac94c2832213221425f3d26939d7e8053955d2ef65e92230524cde929ccfaa8",
+      "project.md": "db1a8c8a6384fff76e390567a573e37af88d25086118e214e851eae732ea120c",
+      "team.md": "ad1b2dff0ebcde63b9c28ce7d95e8674010679a037c77ea3f8c04ac67e2f2091"
+    }
+  }
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from statistics import mean, median
+import re
 
 
 def percentile(values: list[float], fraction: float) -> float | None:
@@ -36,6 +37,7 @@ def evaluate(cases: list[dict], predictions: list[dict], k: int = 5) -> dict:
         reciprocal_rank = next((1 / rank for rank, source in enumerate(retrieved, 1)
                                 if source in gold), 0.0)
         answer = prediction["answer"]
+        normalized_answer = re.sub(r"\s+", "", answer)
         refused = bool(prediction["refused"])
         row = {
             "id": case["id"], "category": case["category"],
@@ -44,7 +46,12 @@ def evaluate(cases: list[dict], predictions: list[dict], k: int = 5) -> dict:
             "citation_precision": (sum(source in gold for source in cited) / len(cited))
             if cited and gold else (0.0 if gold else None),
             "refusal_correct": refused if case["should_refuse"] else None,
-            "answer_contains_all": all(term in answer for term in case["answer_contains"])
+            "answer_contains_all": (
+                all(re.sub(r"\s+", "", term) in normalized_answer
+                    for term in case["answer_contains"])
+                and not any(re.sub(r"\s+", "", term) in normalized_answer
+                            for term in case.get("answer_excludes", []))
+            )
             if not case["should_refuse"] else None,
             "latency_ms": float(prediction["latency_ms"]),
             "model_calls": int(prediction["model_calls"]),

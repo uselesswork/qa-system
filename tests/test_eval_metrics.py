@@ -41,3 +41,15 @@ def test_metrics_reject_missing_predictions_and_bad_k():
         metrics.evaluate([case("one", ["a.md"])], [], 5)
     with pytest.raises(ValueError, match="k 必须"):
         metrics.evaluate([], [], 0)
+
+
+def test_answer_check_normalizes_spacing_and_rejects_obsolete_date():
+    sample = case("date", ["project.md"])
+    sample["answer_contains"] = ["2026年6月18日"]
+    sample["answer_excludes"] = ["2026年6月15日"]
+    good = prediction("date", ["project.md"], ["project.md"],
+                      answer="正式日期：2026 年 6 月 18 日。")
+    assert metrics.evaluate([sample], [good])["answer_contains_accuracy"] == 1
+    bad = prediction("date", ["project.md"], ["project.md"],
+                     answer="2026 年 6 月 18 日，旧草案为 2026 年 6 月 15 日。")
+    assert metrics.evaluate([sample], [bad])["answer_contains_accuracy"] == 0

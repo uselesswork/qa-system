@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from src.auth.service import AuthContext, AuthError, AuthService, SESSION_LIFETIME
 from src.db.session import create_database_engine, create_session_factory
+from src.security.rate_limit import enforce_subject_limit
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -54,7 +55,10 @@ def require_csrf(user: AuthContext = Depends(require_user),
 
 
 @router.post("/register", status_code=201)
-def register(body: Credentials, service: AuthService = Depends(get_auth_service)):
+def register(body: Credentials, request: Request,
+             service: AuthService = Depends(get_auth_service)):
+    enforce_subject_limit(request, request.client.host if request.client else "unknown",
+                          "register", 10)
     try:
         return service.register(body.username, body.password)
     except AuthError as exc:
@@ -64,6 +68,8 @@ def register(body: Credentials, service: AuthService = Depends(get_auth_service)
 @router.post("/login")
 def login(body: Credentials, request: Request, response: Response,
           service: AuthService = Depends(get_auth_service)):
+    enforce_subject_limit(request, request.client.host if request.client else "unknown",
+                          "login", 60)
     try:
         token, user = service.login(body.username, body.password)
     except AuthError as exc:

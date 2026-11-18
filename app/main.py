@@ -1,9 +1,11 @@
 from pathlib import Path
+import os
+from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import HTMLResponse, StreamingResponse
 import json
 from openai import APIError
@@ -19,15 +21,16 @@ from src.chat.repository import ChatNotFound, ChatRepository
 from src.knowledge.service import KnowledgeService
 from src.chat.service import LLMQueryRewriter
 from src.observability.http import request_log_middleware
+from src.security.rate_limit import RedisRateLimiter, enforce_limit
 
 
 class AskRequest(BaseModel):
-    query: str
+    query: str = Field(max_length=2000)
 
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = Field(max_length=2000)
 
 
 @asynccontextmanager
@@ -36,6 +39,7 @@ async def lifespan(app: FastAPI):
 
     app.state.rag_core = rag_core
     app.state.query_rewriter = LLMQueryRewriter(rag_core.llm, max_turns=5)
+    app.state.rate_limiter = RedisRateLimiter(os.environ["REDIS_URL"]) if os.getenv("REDIS_URL") else None
     print("[Lifespan] RAG system ready")
 
     yield
@@ -55,6 +59,10 @@ async def lifespan(app: FastAPI):
     if web_search_service is not None:
         await web_search_service.client.close()
         app.state.web_search_service = None
+    limiter = getattr(app.state, "rate_limiter", None)
+    if limiter is not None:
+        limiter.close()
+        app.state.rate_limiter = None
     print("[Lifespan] shutdown")
 
 
@@ -90,6 +98,7 @@ async def ask(req: AskRequest, request: Request,
               user: AuthContext = Depends(require_csrf),
               knowledge: KnowledgeService = Depends(get_service)):
     rag_core = user_core(request, knowledge, user.user_id)
+    enforce_limit(request, user, "knowledge", 120)
     try:
         result = await rag_core.answer(req.query)
     except APIError as exc:
@@ -108,6 +117,7 @@ async def chat(req: ChatRequest, request: Request,
                repository: ChatRepository = Depends(get_repository),
                knowledge: KnowledgeService = Depends(get_service)):
     try:
+        enforce_limit(request, user, "knowledge", 120)
         service = PersistentChatService(
             repository, session_core(request, knowledge, repository, user.user_id,
                                      req.session_id), app.state.query_rewriter,
@@ -122,13 +132,14 @@ async def chat(req: ChatRequest, request: Request,
 
 
 @app.get("/ask/stream")
-async def ask_stream(query: str, request: Request,
+async def ask_stream(query: Annotated[str, Query(max_length=2000)], request: Request,
                      user: AuthContext = Depends(require_csrf),
                      knowledge: KnowledgeService = Depends(get_service)):
     """
     使用 SSE 流式返回 answer + 最终 evidence/metadata
     """
     rag_core = user_core(request, knowledge, user.user_id)
+    enforce_limit(request, user, "knowledge", 120)
 
     async def event_generator():
         async for event in rag_core.stream_answer_with_result(query):

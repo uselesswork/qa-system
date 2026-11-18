@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from openai import APIError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 from app.api.auth import get_auth_service, require_csrf, require_user
@@ -13,13 +13,14 @@ from src.chat.persistent import PersistentChatService
 from src.chat.repository import ChatNotFound, ChatRepository
 from src.chat.web_search import WebSearchService, WebSearchUnavailable
 from src.chat.web_context import answer_from_web_context
+from src.security.rate_limit import enforce_limit
 
 
 router = APIRouter(prefix="/chat/sessions", tags=["chat-sessions"])
 
 
 class MessageIn(BaseModel):
-    message: str
+    message: str = Field(max_length=2000)
     mode: Literal["knowledge", "web"] = "knowledge"
 
 
@@ -99,6 +100,7 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
             if not question or len(question) > 2000:
                 raise HTTPException(400, "联网搜索问题不能为空或超过 2000 字符。")
             repository.scope_info(user.user_id, session_id)
+            enforce_limit(request, user, "web", 20)
             search_input = question
             if question.startswith(("重新回答", "再回答", "那", "它", "这个", "刚才", "上面", "继续")):
                 earlier = repository.history(user.user_id, session_id)
@@ -119,6 +121,7 @@ async def send_message(session_id: str, body: MessageIn, request: Request,
         if rewriter is None:
             raise HTTPException(503, "问答服务尚未就绪。")
         repository.scope_info(user.user_id, session_id)
+        enforce_limit(request, user, "knowledge", 120)
         rag_core = getattr(request.app.state, "rag_core", None)
         if rag_core is not None:
             contextual = await answer_from_web_context(

@@ -3,6 +3,7 @@ from typing import List
 from src.processors.semantic.base import BaseSemanticSplitter
 from src.processors.chunk import TextChunk
 from src.loaders.document import Document
+from src.processors.splitter import TextSplitter
 
 
 class HeadingSemanticSplitter(BaseSemanticSplitter):
@@ -26,17 +27,18 @@ class HeadingSemanticSplitter(BaseSemanticSplitter):
                 return
             char_start = start + len(raw) - len(raw.lstrip())
             char_end = end - (len(raw) - len(raw.rstrip()))
-            chunks.append(TextChunk(
-                content=content,
-                metadata={
-                    **document.metadata,
-                    "chunk_id": len(chunks),
-                    "char_start": char_start,
-                    "char_end": char_end,
-                    "semantic": "heading",
-                    "heading": heading,
-                },
-            ))
+            metadata = {**document.metadata, "semantic": "heading", "heading": heading}
+            if len(content) <= 500:
+                chunks.append(TextChunk(content=content, metadata={
+                    **metadata, "chunk_id": len(chunks),
+                    "char_start": char_start, "char_end": char_end,
+                }))
+                return
+            for part in TextSplitter().split(Document(content=content, metadata=metadata)):
+                part.metadata["char_start"] += char_start
+                part.metadata["char_end"] += char_start
+                part.metadata["chunk_id"] = len(chunks)
+                chunks.append(part)
 
         # 标题前的说明文字也属于文档，不能在标题切分时丢弃。
         add_chunk(0, matches[0].start(), None)

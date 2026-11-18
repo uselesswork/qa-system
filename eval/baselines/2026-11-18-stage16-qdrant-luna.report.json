@@ -1,0 +1,144 @@
+{
+  "sample_count": 10,
+  "answerable_count": 8,
+  "refusal_count": 2,
+  "k": 5,
+  "hit_at_k": 1,
+  "mrr_at_k": 1.0,
+  "citation_precision": 1.0,
+  "refusal_accuracy": 1,
+  "answer_contains_accuracy": 1,
+  "latency_p50_ms": 4956.916,
+  "latency_p95_ms": 6815.763,
+  "model_calls_total": 19,
+  "model_calls_mean": 1.9,
+  "cases": [
+    {
+      "id": "north_final",
+      "category": "直接问答",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 5420.299,
+      "model_calls": 2
+    },
+    {
+      "id": "north_owner",
+      "category": "直接问答",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 6183.684,
+      "model_calls": 2
+    },
+    {
+      "id": "cross_document",
+      "category": "跨文档",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 5687.502,
+      "model_calls": 2
+    },
+    {
+      "id": "followup",
+      "category": "指代追问",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 7332.919,
+      "model_calls": 3
+    },
+    {
+      "id": "west_final",
+      "category": "相似实体",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 4555.88,
+      "model_calls": 2
+    },
+    {
+      "id": "draft_conflict",
+      "category": "过时草案",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 4866.039,
+      "model_calls": 2
+    },
+    {
+      "id": "milestone",
+      "category": "时间区分",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 4533.394,
+      "model_calls": 2
+    },
+    {
+      "id": "no_budget",
+      "category": "无答案",
+      "hit_at_k": null,
+      "reciprocal_rank": null,
+      "citation_precision": null,
+      "refusal_correct": true,
+      "answer_contains_all": null,
+      "latency_ms": 2489.956,
+      "model_calls": 1
+    },
+    {
+      "id": "no_phone",
+      "category": "无答案",
+      "hit_at_k": null,
+      "reciprocal_rank": null,
+      "citation_precision": null,
+      "refusal_correct": true,
+      "answer_contains_all": null,
+      "latency_ms": 3315.96,
+      "model_calls": 1
+    },
+    {
+      "id": "injection",
+      "category": "恶意资料",
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "citation_precision": 1.0,
+      "refusal_correct": null,
+      "answer_contains_all": true,
+      "latency_ms": 5047.794,
+      "model_calls": 2
+    }
+  ],
+  "run": {
+    "label": "stage16-qdrant-local-gpt-6-luna",
+    "created_at_utc": "2026-11-18T02:44:04.166735+00:00",
+    "python": "3.11.9",
+    "dataset_sha256": "7a9a57d615bdf3ad7c8ecef5cac409e300fbe1a0061b97ea54001b9e29a3a381",
+    "predictions_sha256": "f1d58a885abe514ee1ce09a204676b70290d11a022fc0b36cd7a7e8cfb23a368",
+    "predictions_path": "eval/baselines/2026-11-18-stage16-qdrant-luna.predictions.jsonl",
+    "corpus_sha256": {
+      "draft.md": "fb63e72dba80f5ba86fdac8dca7b7fd802ff0134453885a213ab7b4dc288a77c",
+      "injection.md": "07e721479bcb21dfebf2b686fbdd373fcc0ee5dd20d7fbb31562204a805f6ee5",
+      "milestone.md": "d59fc3d3f36ac1f51519c408fcf8d5ccd6308d615ffb415a760e111c32f61085",
+      "noise.md": "e17f7ed262ea31cdd53e08ff647b83daa43db491c7ad7764f08e4d69bd947413",
+      "project.md": "6c4c5f153ad1baa692244cdbb533680a076e6dffa2cb7755367e282bee84b1a7",
+      "team.md": "c40ec66c7d9a208fb63a5e5cc2b801e11ed2219095f5fcb8a5fdf3c3463019e5",
+      "west.md": "11746c44e9499f323076d8865b60f75c616192d9c1a432280dfc6e48719c5ba2"
+    }
+  }
+}

@@ -29,3 +29,14 @@
 本次 5 条案例中，4 条可回答题的文档级 `Hit@5=1.0`、`MRR@5=1.0`、引用准确率 `1.0`、答案包含率 `1.0`；1 条无答案题正确拒答。延迟 P50 为 `4659.872 ms`、P95 为 `6710.773 ms`，共 10 次 LLM 调用。语料只有 3 份短文档，命中率不能外推到真实用户资料；答案包含率只检查字符串，未人工评判语义质量。采集脚本直接运行现有 RAG 组件、真实 Embedding 与 LLM，向量存在内存中；这份基线不包含 MySQL、Qdrant、Redis、HTTP 和浏览器耗时，浏览器端到端另有阶段 11～12 的验收记录。
 
 复跑时保持模型和语料不变，先重新采集，再对新的预测文件运行 `run_eval.py`；不要把不同配置的结果直接当成改造前后效果。
+
+## 阶段 16 扩展样本
+
+独立的 [`stage16/dataset.jsonl`](stage16/dataset.jsonl) 和 [`stage16/corpus/`](stage16/corpus/) 增加相似项目、过时草案、不同日期、无答案及恶意指令案例。`answer_contains` 会忽略空白字符，`answer_excludes` 可列出不允许出现的旧日期或错误日期。采集脚本可选择临时本地 Qdrant，运行结束即删除临时集合；不会写入用户知识库：
+
+```powershell
+.\.venv\Scripts\python.exe eval\collect_predictions.py --dataset eval\stage16\dataset.jsonl --corpus eval\stage16\corpus --vector-backend qdrant-local --model gpt-6-luna --output eval\predictions.jsonl
+.\.venv\Scripts\python.exe eval\run_eval.py --dataset eval\stage16\dataset.jsonl --corpus eval\stage16\corpus --predictions eval\predictions.jsonl --output eval\reports\stage16.json --run-label stage16-qdrant-luna
+```
+
+首次真实预测及其报告保存在 [`baselines/2026-11-18-stage16-qdrant-luna.predictions.jsonl`](baselines/2026-11-18-stage16-qdrant-luna.predictions.jsonl) 和 [`baselines/2026-11-18-stage16-qdrant-luna.report.json`](baselines/2026-11-18-stage16-qdrant-luna.report.json)。旧五题在同模型、同内存后端、同语料下的复跑报告为 [`baselines/2026-11-18-stage14-regression-luna.report.json`](baselines/2026-11-18-stage14-regression-luna.report.json)。详见[阶段 16 说明](../docs/第十六阶段-检索质量与安全加固.md)。

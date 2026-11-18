@@ -20,6 +20,8 @@ from src.observability.tracing import traceable
 
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_EXTRACTED_CHARS = 500_000
+MAX_CHUNKS = 1_200
 LOADERS = {".md": MarkdownLoader, ".txt": TxtLoader, ".pdf": PdfLoader}
 
 
@@ -53,15 +55,51 @@ class KnowledgeService:
                 "status": task.status, "attempts": task.attempts,
                 "error_message": task.error_message}
 
+    @staticmethod
+    def validate_upload(filename: str, content: bytes) -> tuple[str, str]:
+        safe_name = Path(filename.replace("\\", "/")).name
+        suffix = Path(safe_name).suffix.lower()
+        if (not safe_name or safe_name != filename or len(safe_name) > 255
+                or any(ord(char) < 32 or ord(char) == 127 for char in safe_name)
+                or suffix not in LOADERS):
+            raise KnowledgeError("仅支持 .md、.txt、.pdf 文件；文件名不能包含路径或控制字符，且不能超过 255 字符。")
+        if not content or len(content) > MAX_FILE_BYTES:
+            raise KnowledgeError("文件不能为空或超过 10 MiB。", 413)
+        if suffix == ".pdf":
+            if not content.startswith(b"%PDF-"):
+                raise KnowledgeError("PDF 文件头无效。", 422)
+        else:
+            try:
+                decoded = content.decode("utf-8-sig")
+            except UnicodeDecodeError as exc:
+                raise KnowledgeError("文本文件必须为 UTF-8 编码。", 422) from exc
+            if "\x00" in decoded or not decoded.strip() or len(decoded) > MAX_EXTRACTED_CHARS:
+                raise KnowledgeError("文本文件为空、包含二进制内容或提取文字过长。", 422)
+        return safe_name, suffix
+
+    @staticmethod
+    def load_chunks(path: Path, suffix: str, safe_name: str) -> list:
+        cleaner = TextCleaner()
+        splitter = SemanticSplitter()
+        chunks = []
+        total_chars = 0
+        for item in LOADERS[suffix]().load(path):
+            item.content = cleaner.clean(item.content, preserve_newlines=True)
+            total_chars += len(item.content)
+            if total_chars > MAX_EXTRACTED_CHARS:
+                raise ValueError("提取文字超过 500000 字符。")
+            item.metadata["source"] = safe_name
+            chunks.extend(splitter.split(item))
+            if len(chunks) > MAX_CHUNKS:
+                raise ValueError("文档片段超过 1200 条。")
+        if not chunks:
+            raise ValueError("文件没有可提取的文字。")
+        return chunks
+
     def queue_upload(self, kb_id: str, filename: str, content: bytes,
                      owner_id: str) -> dict:
         self.get_kb(kb_id, owner_id)
-        safe_name = Path(filename.replace("\\", "/")).name
-        suffix = Path(safe_name).suffix.lower()
-        if not safe_name or len(safe_name) > 255 or suffix not in LOADERS:
-            raise KnowledgeError("仅支持 .md、.txt、.pdf 文件，文件名不能超过 255 字符。")
-        if not content or len(content) > MAX_FILE_BYTES:
-            raise KnowledgeError("文件不能为空或超过 10 MiB。", 413)
+        safe_name, suffix = self.validate_upload(filename, content)
         digest = sha256(content).hexdigest()
         document_id = str(uuid4())
         self.upload_dir.mkdir(parents=True, exist_ok=True)
@@ -227,12 +265,7 @@ class KnowledgeService:
     async def upload(self, kb_id: str, filename: str, content: bytes,
                      owner_id: str | None = None) -> dict:
         self.get_kb(kb_id, owner_id)
-        safe_name = Path(filename.replace("\\", "/")).name
-        suffix = Path(safe_name).suffix.lower()
-        if not safe_name or len(safe_name) > 255 or suffix not in LOADERS:
-            raise KnowledgeError("仅支持 .md、.txt、.pdf 文件，文件名不能超过 255 字符。")
-        if not content or len(content) > MAX_FILE_BYTES:
-            raise KnowledgeError("文件不能为空或超过 10 MiB。", 413)
+        safe_name, suffix = self.validate_upload(filename, content)
         digest = sha256(content).hexdigest()
         with self.sessions() as session:
             existing = session.scalar(select(Document).where(
@@ -247,18 +280,9 @@ class KnowledgeService:
         path.write_bytes(content)
         try:
             try:
-                loaded = LOADERS[suffix]().load(path)
+                chunks = self.load_chunks(path, suffix, safe_name)
             except Exception as exc:
                 raise KnowledgeError("文件无法解析，请确认编码或 PDF 内容有效。", 422) from exc
-            cleaner = TextCleaner()
-            splitter = SemanticSplitter()
-            chunks = []
-            for item in loaded:
-                item.content = cleaner.clean(item.content, preserve_newlines=True)
-                item.metadata["source"] = safe_name
-                chunks.extend(splitter.split(item))
-            if not chunks:
-                raise KnowledgeError("文件没有可提取的文字；扫描 PDF 暂不支持。", 422)
             with self.sessions.begin() as session:
                 session.add(Document(
                     id=document_id, knowledge_base_id=kb_id,
@@ -362,16 +386,8 @@ class KnowledgeService:
             raise KnowledgeError("删除旧向量失败，文档保留为 pending，可重试。", 503) from exc
         with self.sessions.begin() as session:
             session.query(Chunk).filter(Chunk.document_id == document_id).delete()
-        cleaner = TextCleaner()
-        splitter = SemanticSplitter()
-        chunks = []
         try:
-            for item in LOADERS[suffix]().load(path):
-                item.content = cleaner.clean(item.content, preserve_newlines=True)
-                item.metadata["source"] = safe_name
-                chunks.extend(splitter.split(item))
-            if not chunks:
-                raise ValueError("原文件没有可提取的文字。")
+            chunks = self.load_chunks(path, suffix, safe_name)
             await self._index(document_id, kb_id, chunks)
         except Exception as exc:
             with self.sessions.begin() as session:

@@ -28,6 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="评估同一次问答运行导出的预测 JSONL")
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--dataset", type=Path, default=ROOT / "dataset.jsonl")
+    parser.add_argument("--corpus", type=Path, help="本次预测使用的固定语料目录；记录每个 Markdown 文件哈希")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-label", required=True, help="模型和配置标识，例如 luna-20261116")
     parser.add_argument("--k", type=int, default=5)
@@ -43,6 +44,13 @@ def main() -> None:
         "predictions_sha256": hashlib.sha256(predictions_bytes).hexdigest(),
         "predictions_path": args.predictions.as_posix(),
     }
+    if args.corpus is not None:
+        files = sorted(args.corpus.glob("*.md"))
+        if not files:
+            raise ValueError("语料目录没有 Markdown 文件")
+        report["run"]["corpus_sha256"] = {
+            file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in files
+        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"已评估 {report['sample_count']} 条样本；报告：{args.output}")
