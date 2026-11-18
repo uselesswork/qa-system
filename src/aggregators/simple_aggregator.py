@@ -31,6 +31,7 @@ class AnswerAggregator(BaseEvidenceAggregator):
                     content=chunk.content,
                     source=chunk.metadata.get("source"),
                     chunk_id=chunk.metadata.get("chunk_id"),
+                    page_number=chunk.metadata.get("page"),
                 )
             )
 

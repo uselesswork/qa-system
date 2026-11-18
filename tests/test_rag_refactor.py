@@ -191,7 +191,7 @@ def test_aggregator_contracts_separate_answers_from_evidence_only():
         SimpleNamespace(
             content="source text",
             vector=[1.0, 0.0],
-            metadata={"source": "doc.md", "chunk_id": 1},
+            metadata={"source": "doc.pdf", "chunk_id": 1, "page": 3},
         ),
         0.9,
     )
@@ -225,8 +225,10 @@ def test_aggregator_contracts_separate_answers_from_evidence_only():
     evidence, answer = asyncio.run(run())
 
     assert len(evidence) == 1
+    assert evidence[0].page_number == 3
     assert answer.answer == "plain answer"
-    assert answer.evidence_chunks[0].source == "doc.md"
+    assert answer.evidence_chunks[0].source == "doc.pdf"
+    assert answer.evidence_chunks[0].page_number == 3
 
 
 def test_unrelated_chunks_are_not_used_to_answer_or_shown_as_evidence():

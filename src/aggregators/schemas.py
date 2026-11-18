@@ -8,7 +8,8 @@ class EvidenceChunk:
     score: float
     content: str
     source: Any
-    chunk_id: int
+    chunk_id: str | int | None
+    page_number: int | None = None
 
 
 @dataclass

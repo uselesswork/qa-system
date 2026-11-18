@@ -84,6 +84,7 @@ def serialize_evidence(items):
             "source": str(item.source) if item.source is not None else None,
             "chunk_id": item.chunk_id,
             "content": item.content,
+            "page_number": getattr(item, "page_number", None),
         }
         for item in items
     ]

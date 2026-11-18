@@ -157,6 +157,7 @@ quote 必须是对应片段中至少 4 个字符的原文连续摘录。只输�
                     content=content,
                     source=r.chunk.metadata.get("source"),
                     chunk_id=r.chunk.metadata.get("chunk_id"),
+                    page_number=r.chunk.metadata.get("page"),
                 )
             )
 

@@ -5,17 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RAG 多轮问答</title>
   <style>
-    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#e5e9f0; --brand:#3157d5; --soft:#f4f6fb; }
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#dfe5ef; --brand:#3157d5; --soft:#f4f6fb; }
     * { box-sizing:border-box; }
-    body { margin:0; background:#f7f8fb; color:var(--ink); font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
-    .app { display:grid; grid-template-rows:auto 1fr; width:min(1100px,100%); min-height:100vh; margin:auto; background:#fff; border-inline:1px solid var(--line); }
-    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line); }
+    body { margin:0; background:#eef2f8; color:var(--ink); font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
+    .app { display:grid; grid-template-rows:auto 1fr; width:min(1320px,100%); min-height:100vh; margin:auto; background:#fff; border-inline:1px solid var(--line); box-shadow:0 16px 56px rgba(35,55,94,.07); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 28px; border-bottom:1px solid var(--line); background:linear-gradient(105deg,#fff,#f8faff); }
     h1 { margin:0; font-size:18px; } .sub { color:var(--muted); font-size:12px; }
     button { border:0; border-radius:9px; cursor:pointer; font:inherit; }
     .new-chat { padding:8px 12px; color:#344054; background:var(--soft); }
     .header-actions { display:flex; align-items:center; gap:8px; }
-    .workspace { display:grid; grid-template-columns:260px minmax(0,1fr); min-height:0; }
-    .sidebar { padding:14px; border-right:1px solid var(--line); background:#fafbfe; overflow-y:auto; max-height:calc(100vh - 78px); }
+    .workspace { display:grid; grid-template-columns:320px minmax(0,1fr); min-height:0; }
+    .sidebar { padding:18px; border-right:1px solid var(--line); background:#fafbfe; overflow-y:auto; max-height:calc(100vh - 78px); }
     .sidebar h2 { margin:0 0 10px; font-size:13px; color:var(--muted); }
     .knowledge-panel { padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--line); }
     .knowledge-panel select,.knowledge-panel input[type="text"] { width:100%; min-width:0; padding:8px; margin:0 0 8px; border:1px solid #ccd3df; border-radius:8px; background:white; font:inherit; }
@@ -23,19 +23,37 @@
     .knowledge-panel input[type="file"] { width:100%; margin:4px 0 8px; font:inherit; font-size:12px; }
     .knowledge-panel button { padding:7px 10px; background:#e9edfb; color:#243d9b; }
     .knowledge-panel button:disabled { opacity:.55; cursor:not-allowed; }
+    .knowledge-panel textarea { width:100%; min-height:54px; padding:8px; border:1px solid #ccd3df; border-radius:8px; resize:vertical; font:inherit; }
+    .kb-overview { margin:8px 0 14px; padding:12px; border:1px solid var(--line); border-radius:11px; background:#fff; }
+    .kb-overview strong { display:block; font-size:13px; }
+    .kb-overview p { margin:3px 0 0; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+    .kb-overview .counts { margin-top:8px; color:#3157d5; font-size:12px; font-weight:600; }
+    .section-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .section-head small { color:var(--muted); }
+    .upload-progress { margin:9px 0 12px; padding:10px; border:1px solid #c9d5fa; border-radius:9px; background:#f2f5ff; color:#243d9b; font-size:12px; }
+    .upload-progress progress { display:block; width:100%; height:9px; margin-top:7px; accent-color:var(--brand); }
+    .upload-progress.error { border-color:#f7c8c3; background:#fff4f2; color:#b42318; }
     .doc-item { padding:7px 0; border-top:1px solid var(--line); font-size:12px; overflow-wrap:anywhere; }
     .doc-item button { margin-left:6px; padding:3px 6px; font-size:11px; }
     .doc-item .delete-document { background:#feeceb; color:#b42318; }
     .status { color:var(--muted); font-size:12px; }
     .status.error { color:#b42318; }
     .scope { padding:8px 24px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
-    .session { display:block; width:100%; padding:9px 10px; margin-bottom:5px; text-align:left; color:var(--ink); background:transparent; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .session { display:block; width:100%; padding:10px 11px; margin-bottom:5px; text-align:left; color:var(--ink); background:transparent; overflow:hidden; }
     .session:hover,.session.active { background:#e9edfb; }
+    .session.active { box-shadow:inset 3px 0 var(--brand); }
+    .session-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+    .session-meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; }
+    .sessions-tools { display:flex; gap:6px; margin:8px 0; }
+    .sessions-tools input,.sessions-tools select { min-width:0; padding:7px; border:1px solid #ccd3df; border-radius:8px; background:#fff; font:inherit; font-size:12px; }
+    .sessions-tools input { flex:1; width:55%; }
+    .sessions-tools select { width:42%; }
+    .list-empty { color:var(--muted); font-size:12px; padding:9px 2px; }
     .chat-area { display:flex; flex-direction:column; min-width:0; min-height:0; }
     #messages { flex:1; overflow:auto; padding:28px 24px 170px; }
     .empty { max-width:520px; margin:16vh auto 0; text-align:center; color:var(--muted); }
     .empty strong { display:block; margin-bottom:8px; color:var(--ink); font-size:22px; }
-    .message { display:flex; gap:12px; margin:0 auto 22px; max-width:760px; }
+    .message { display:flex; gap:12px; margin:0 auto 22px; max-width:840px; }
     .message.user { justify-content:flex-end; }
     .bubble { max-width:min(680px,88%); padding:11px 14px; border-radius:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
     .user .bubble { color:#fff; background:var(--brand); border-bottom-right-radius:4px; }
@@ -49,12 +67,16 @@
     .evidence { margin:0 10px 10px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:8px; }
     .evidence-head { display:flex; flex-wrap:wrap; gap:8px; color:#344054; font-size:12px; font-weight:600; }
     .evidence-content { margin-top:6px; color:#475467; white-space:pre-wrap; font-size:13px; }
+    .evidence:focus,.evidence.focused-evidence { outline:2px solid #7c97ec; outline-offset:2px; }
+    .source-jumps { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
+    .source-jumps button { padding:5px 9px; border:1px solid #d4def8; border-radius:999px; color:#2746aa; background:#f4f7ff; font-size:12px; }
+    .source-jumps button:hover { background:#e7edff; }
     .web-mode { margin:0 0 8px; padding:6px 11px; border:1px solid #ccd3df; color:#344054; background:#fff; font-size:12px; }
     .web-mode.active { border-color:var(--brand); color:#fff; background:var(--brand); }
     .web-mode:disabled { opacity:.55; cursor:not-allowed; }
     .web-source { color:var(--brand); font-weight:600; }
     .web-label { margin-bottom:6px; color:#3157d5; font-size:12px; font-weight:600; }
-    .composer-wrap { position:fixed; bottom:0; left:50%; width:min(1098px,100%); transform:translateX(-50%); padding:12px 24px 20px 284px; background:linear-gradient(transparent,#fff 20%); }
+    .composer-wrap { position:fixed; bottom:0; left:50%; width:min(1318px,100%); transform:translateX(-50%); padding:12px 24px 20px 344px; background:linear-gradient(transparent,#fff 20%); }
     .composer { display:flex; align-items:flex-end; gap:10px; padding:10px; border:1px solid #ccd3df; border-radius:14px; background:#fff; box-shadow:0 8px 28px rgba(16,24,40,.1); }
     textarea { flex:1; min-height:44px; max-height:150px; resize:none; border:0; outline:0; padding:10px; color:var(--ink); font:inherit; }
     .send { width:44px; height:44px; flex:0 0 auto; color:#fff; background:var(--brand); font-size:18px; }
@@ -67,13 +89,13 @@
     .auth-panel button { padding:10px 14px; margin-right:8px; background:var(--brand); color:white; }
     .auth-panel .secondary { background:var(--soft); color:var(--ink); }
     [hidden] { display:none !important; }
-    @media (max-width:640px) { header,#messages { padding-inline:16px; } .workspace { grid-template-columns:1fr; } .sidebar { border-right:0; border-bottom:1px solid var(--line); max-height:230px; overflow:auto; } .composer-wrap { padding-inline:12px; } .bubble { max-width:94%; } }
+    @media (max-width:760px) { header,#messages { padding-inline:16px; } .workspace { grid-template-columns:1fr; } .sidebar { border-right:0; border-bottom:1px solid var(--line); max-height:300px; overflow:auto; } .composer-wrap { padding-inline:12px; } .bubble { max-width:94%; } .app { min-height:100dvh; } }
   </style>
 </head>
 <body>
 <main class="app">
   <header>
-    <div><h1>RAG 多轮问答</h1><div class="sub">基于上下文连续追问，并展示检索依据</div></div>
+    <div><h1>RAG 多轮问答</h1><div class="sub">私有资料、连续追问与可核对的回答依据</div></div>
     <div class="header-actions"><span id="username" class="sub"></span><button class="new-chat" id="newChat" type="button" hidden>＋ 新对话</button><button class="new-chat" id="logout" type="button" hidden>退出</button></div>
   </header>
   <form class="auth-panel" id="authPanel" hidden>
@@ -88,8 +110,10 @@
       <div class="knowledge-panel">
         <h2>我的知识库</h2>
         <select id="knowledgeBase" aria-label="当前知识库"><option value="">请选择知识库</option></select>
+        <div id="knowledgeOverview" class="kb-overview" aria-live="polite"></div>
         <form id="createKnowledgeBase">
           <input id="knowledgeBaseName" type="text" maxlength="128" placeholder="新知识库名称" aria-label="新知识库名称" required>
+          <textarea id="knowledgeBaseDescription" maxlength="500" placeholder="用途说明（可选）" aria-label="知识库用途说明"></textarea>
           <button type="submit">创建知识库</button>
         </form>
         <form id="uploadDocument">
@@ -97,17 +121,23 @@
           <input id="documentFile" type="file" accept=".md,.txt,.pdf" required>
           <button id="uploadButton" type="submit">上传文件并建立索引</button>
         </form>
+        <div id="uploadProgress" class="upload-progress" role="status" hidden>
+          <span id="uploadProgressText">准备上传</span><progress id="uploadProgressBar" max="100" value="0"></progress>
+        </div>
         <div id="knowledgeStatus" class="status" role="status"></div>
+        <div class="section-head"><h2>资料</h2><small id="documentCount"></small></div>
         <div id="documents"></div>
       </div>
-      <h2>历史会话</h2><div id="sessions"></div>
+      <div class="section-head"><h2>历史会话</h2><small id="sessionCount"></small></div>
+      <div class="sessions-tools"><input id="sessionSearch" type="search" placeholder="搜索会话" aria-label="搜索历史会话"><select id="sessionFilter" aria-label="筛选历史会话"><option value="all">全部</option><option value="current">当前知识库</option><option value="web">联网会话</option></select></div>
+      <div id="sessions"></div>
     </aside>
     <div class="chat-area"><div id="chatScope" class="scope"></div><section id="messages" aria-live="polite"></section></div>
   </div>
   <div class="composer-wrap" id="composerWrap" hidden>
     <button class="web-mode" id="webMode" type="button" aria-pressed="false">🌐 联网搜索：关闭</button>
     <form class="composer" id="composer">
-      <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift + Enter 换行" aria-label="问题"></textarea>
+      <textarea id="input" rows="1" maxlength="2000" placeholder="输入问题，Enter 发送，Shift + Enter 换行" aria-label="问题"></textarea>
       <button class="send" id="send" type="submit" aria-label="发送">↑</button>
     </form>
     <div class="hint" id="composerHint">回答由模型生成，请结合检索依据核实关键信息</div>
@@ -129,20 +159,59 @@
   let currentKbId = null;
   let knowledgeBases = [];
   let documents = [];
+  let sessionList = [];
   let csrfToken = null;
   let history = [];
   let reloadWhenReady = null;
   localStorage.removeItem("rag-chat-session");
   localStorage.removeItem("rag-chat-history");
+  function responseError(response, body) {
+    const detail = typeof body?.detail === "string" ? body.detail
+      : Array.isArray(body?.detail) ? body.detail.map(item => item.msg).filter(Boolean).join("；")
+      : "";
+    if (response.status === 429) {
+      const seconds = Number(response.headers.get("Retry-After"));
+      return `${detail || "操作过于频繁。"}${Number.isFinite(seconds) && seconds > 0 ? ` 请约 ${Math.ceil(seconds / 60)} 分钟后重试。` : ""}`;
+    }
+    if (response.status === 413) return detail || "文件超过允许大小。";
+    if (response.status === 422) return detail || "输入内容不符合要求，请检查文件或问题。";
+    if (response.status >= 500) return detail || "服务暂时不可用，请稍后重试。";
+    return detail || `请求失败（${response.status}）。`;
+  }
   async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     if (csrfToken && options.method && options.method !== "GET") headers["X-CSRF-Token"] = csrfToken;
-    const response = await fetch(path, { credentials:"same-origin", ...options, headers });
+    let response;
+    try { response = await fetch(path, { credentials:"same-origin", ...options, headers }); }
+    catch { throw new Error("无法连接服务，请检查后端是否仍在运行。"); }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || `请求失败（${response.status}）`);
+      throw new Error(responseError(response, body));
     }
     return response.status === 204 ? null : response.json();
+  }
+  function uploadFile(path, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", path);
+      xhr.withCredentials = true;
+      if (csrfToken) xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && event.total > 0)
+          onProgress(Math.min(100, Math.round(event.loaded * 100 / event.total)));
+      };
+      xhr.onerror = () => reject(new Error("上传连接中断，请检查服务后重试。"));
+      xhr.onabort = () => reject(new Error("上传已取消。"));
+      xhr.onload = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* Show HTTP status below. */ }
+        if (xhr.status >= 200 && xhr.status < 300) { resolve(body); return; }
+        reject(new Error(responseError({ status:xhr.status, headers:{ get:name => xhr.getResponseHeader(name) } }, body)));
+      };
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    });
   }
   function showLoggedIn(value) {
     document.querySelector("#authPanel").hidden = value;
@@ -158,6 +227,22 @@
     const target = document.querySelector("#knowledgeStatus");
     target.textContent = message;
     target.classList.toggle("error", error);
+  }
+  function renderKnowledgeOverview() {
+    const target = document.querySelector("#knowledgeOverview");
+    const kb = knowledgeBases.find(item => item.id === currentKbId);
+    target.replaceChildren();
+    if (!kb) {
+      target.append(element("p", "", "选择或创建知识库后，可在这里管理资料。"));
+      document.querySelector("#documentCount").textContent = "0 份";
+      return;
+    }
+    target.append(element("strong", "", kb.name));
+    if (kb.description) target.append(element("p", "", kb.description));
+    const ready = documents.filter(item => item.status === "ready").length;
+    const processing = documents.filter(item => ["pending", "indexing"].includes(item.status)).length;
+    target.append(element("div", "counts", `${ready} 份可检索 · ${processing} 份处理中 · ${documents.length} 份资料`));
+    document.querySelector("#documentCount").textContent = `${documents.length} 份`;
   }
   function reloadWorkspace() {
     reloading = true;
@@ -214,10 +299,18 @@
     if (reloadWhenReady && reloadWhenReady.knowledgeBaseId === currentKbId) {
       const uploaded = documents.find(item => item.id === reloadWhenReady.documentId);
       if (uploaded?.status === "ready") { reloadWhenReady = null; reloadWorkspace(); return; }
-      if (uploaded?.status === "failed") reloadWhenReady = null;
+      if (uploaded?.status === "failed") {
+        reloadWhenReady = null;
+        const progress = document.querySelector("#uploadProgress");
+        progress.classList.add("error");
+        document.querySelector("#uploadProgressText").textContent =
+          `索引失败：${uploaded.error_message || "请查看资料列表并重试。"}`;
+        setKnowledgeStatus("索引失败，文件已保留，可在资料列表中重试。", true);
+      }
     }
     const container = document.querySelector("#documents");
     container.replaceChildren();
+    renderKnowledgeOverview();
     if (!currentKbId && sessionId && sessionScope === null && sessionType === "knowledge")
       setKnowledgeStatus("旧会话按本人全部已索引资料检索；选择知识库可开启新对话。", false);
     else if (!currentKbId) setKnowledgeStatus("可创建知识库上传资料，或开启联网搜索。", false);
@@ -277,21 +370,41 @@
     });
     updateComposer();
   }
-  async function loadSessions() {
-    const list = await api("/chat/sessions");
+  function renderSessionList() {
     const container = document.querySelector("#sessions");
     container.replaceChildren();
-    list.forEach(item => {
+    const query = document.querySelector("#sessionSearch").value.trim().toLocaleLowerCase();
+    const filter = document.querySelector("#sessionFilter").value;
+    const visible = sessionList.filter(item => {
+      if (filter === "current" && item.knowledge_base_id !== currentKbId) return false;
+      if (filter === "web" && item.session_type !== "web") return false;
       const scope = item.session_type === "web" ? "联网对话"
         : item.knowledge_base_id ? knowledgeName(item.knowledge_base_id) : "旧版全库";
-      const button = element("button", `session ${item.id === sessionId ? "active" : ""}`, `${item.title} · ${scope}`);
+      return !query || item.title.toLocaleLowerCase().includes(query)
+        || scope.toLocaleLowerCase().includes(query);
+    });
+    document.querySelector("#sessionCount").textContent = `${visible.length} / ${sessionList.length}`;
+    if (!visible.length) container.append(element("div", "list-empty", sessionList.length
+      ? "没有符合条件的会话。" : "还没有会话，先提出一个问题。"));
+    visible.forEach(item => {
+      const scope = item.session_type === "web" ? "联网对话"
+        : item.knowledge_base_id ? knowledgeName(item.knowledge_base_id) : "旧版全库";
+      const button = element("button", `session ${item.id === sessionId ? "active" : ""}`);
       button.type = "button";
-      button.title = item.title;
+      button.title = `${item.title} · ${scope}`;
+      button.setAttribute("aria-label", `打开会话：${item.title}，${scope}`);
+      button.append(element("span", "session-title", item.title));
+      button.append(element("span", "session-meta", `${scope} · ${String(item.updated_at || "").slice(0, 10)}`));
       button.addEventListener("click", () => openSession(item.id).catch(
         error => setKnowledgeStatus(error.message, true)
       ));
       container.append(button);
     });
+  }
+  async function loadSessions() {
+    const list = await api("/chat/sessions");
+    sessionList = list;
+    renderSessionList();
     return list;
   }
   async function openSession(id, preserveWeb = false) {
@@ -381,7 +494,7 @@
     });
     container.append(document.createTextNode(chars.slice(offset).join("")));
   }
-  function renderTurn(turn) {
+  function renderTurn(turn, turnIndex = history.length) {
     const row = element("article", `message ${turn.role}`);
     const bubble = element("div", "bubble");
     if (turn.role === "user") bubble.textContent = turn.content;
@@ -393,19 +506,42 @@
       if (isWeb) renderWebAnswer(answer, turn.content, turn.metadata?.citations);
       else answer.textContent = turn.content;
       bubble.append(answer);
+      if (!isWeb && !turn.error && turn.evidence?.length) {
+        const jumps = element("nav", "source-jumps");
+        jumps.setAttribute("aria-label", "定位本条回答的依据");
+        turn.evidence.forEach((item, index) => {
+          const label = `依据 ${index + 1}：${item.source || "未知来源"}${item.page_number ? ` 第 ${item.page_number} 页` : ""}`;
+          const jump = element("button", "", label);
+          jump.type = "button";
+          jump.addEventListener("click", () => {
+            const details = bubble.querySelector(".turn-meta");
+            const card = document.getElementById(`evidence-${turnIndex}-${index}`);
+            if (!details || !card) return;
+            details.open = true;
+            card.scrollIntoView({ behavior:"smooth", block:"center" });
+            card.focus({ preventScroll:true });
+            card.classList.add("focused-evidence");
+            setTimeout(() => card.classList.remove("focused-evidence"), 1800);
+          });
+          jumps.append(jump);
+        });
+        bubble.append(jumps);
+      }
       if (!turn.error && (turn.rewritten_query || turn.evidence?.length)) {
         const details = element("details", "turn-meta");
         const count = turn.evidence?.length || 0;
         details.append(element("summary", "", isWeb ? `网页来源 · ${count} 条` : `检索详情 · ${count} 条依据`));
         if (turn.rewritten_query && !isWeb) details.append(element("div", "rewrite", `检索问题：${turn.rewritten_query}`));
-        (turn.evidence || []).forEach(item => {
+        (turn.evidence || []).forEach((item, index) => {
           const card = element("div", "evidence");
           if (item.source_type === "web") {
             const url = safeWebUrl(item.url);
             card.append(url ? webLink(url, `#${item.rank}　${item.title || url}`)
               : element("span", "", "无效网页来源"));
           } else {
-            card.append(element("div", "evidence-head", `#${item.rank}　${item.source || "未知来源"}　${item.chunk_id || ""}`));
+            card.id = `evidence-${turnIndex}-${index}`;
+            card.tabIndex = -1;
+            card.append(element("div", "evidence-head", `依据 ${index + 1} · ${item.source || "未知来源"}${item.page_number ? ` · 第 ${item.page_number} 页` : ""}`));
             card.append(element("div", "evidence-content", item.content));
           }
           details.append(card);
@@ -434,7 +570,7 @@
         : "选择知识库并上传资料，或点亮输入框上方的联网搜索按钮。");
       messages.append(empty); return;
     }
-    history.forEach(renderTurn); scrollToBottom();
+    history.forEach((turn, index) => renderTurn(turn, index)); scrollToBottom();
   }
   function scrollToBottom() { requestAnimationFrame(() => messages.scrollTo({ top:messages.scrollHeight, behavior:"smooth" })); }
   function setBusy(value) { busy = value; updateComposer(); }
@@ -493,8 +629,10 @@
       });
       await openSession(created.id, true);
     }
-    catch (error) { alert(error.message); }
+    catch (error) { setKnowledgeStatus(error.message, true); }
   });
+  document.querySelector("#sessionSearch").addEventListener("input", renderSessionList);
+  document.querySelector("#sessionFilter").addEventListener("change", renderSessionList);
   document.querySelector("#knowledgeBase").addEventListener("change", async event => {
     if (busy || uploading) { event.target.value = currentKbId || ""; return; }
     currentKbId = event.target.value || null;
@@ -509,15 +647,17 @@
     event.preventDefault();
     if (busy || uploading) return;
     const name = document.querySelector("#knowledgeBaseName").value.trim();
+    const description = document.querySelector("#knowledgeBaseDescription").value.trim();
     if (!name) return;
     try {
       const created = await api("/knowledge-bases", {
-        method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ name })
+        method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ name, description:description || null })
       });
       sessionId = null; sessionScope = created.id; sessionType = "knowledge";
       legacyReady = false; history = [];
       webEnabled = false;
       document.querySelector("#knowledgeBaseName").value = "";
+      document.querySelector("#knowledgeBaseDescription").value = "";
       setKnowledgeStatus("", false);
       await loadKnowledgeBases(created.id);
       await loadSessions(); render();
@@ -533,17 +673,34 @@
     if (file.size > 10 * 1024 * 1024) { setKnowledgeStatus("文件不能超过 10 MiB。", true); return; }
     const button = document.querySelector("#uploadButton");
     const kbId = currentKbId;
-    const form = new FormData(); form.append("file", file);
+    const progress = document.querySelector("#uploadProgress");
+    const progressBar = document.querySelector("#uploadProgressBar");
+    const progressText = document.querySelector("#uploadProgressText");
+    progress.hidden = false; progress.classList.remove("error");
+    progressBar.value = 0;
+    progressText.textContent = `正在上传“${file.name}”：0%`;
     uploading = true; button.disabled = true; updateComposer();
     setKnowledgeStatus("正在上传文件……", false);
     try {
-      const result = await api(`/knowledge-bases/${encodeURIComponent(kbId)}/documents`, { method:"POST", body:form });
+      const result = await uploadFile(`/knowledge-bases/${encodeURIComponent(kbId)}/documents`, file, percent => {
+        progressBar.value = percent;
+        progressText.textContent = percent === 100
+          ? `“${file.name}”已传输，等待服务器确认……`
+          : `正在上传“${file.name}”：${percent}%`;
+      });
       fileInput.value = "";
       if (result.status === "ready") { reloadWorkspace(); return; }
-      if (result.document_id)
+      if (result.document_id) {
         reloadWhenReady = { knowledgeBaseId:kbId, documentId:result.document_id };
+        progressBar.removeAttribute("value");
+        progressText.textContent = `“${file.name}”上传完成，正在建立索引……`;
+      }
       setKnowledgeStatus(result.document_id ? "上传完成，索引任务已排队。" : "上传并建立索引成功，现在可以提问。", false);
-    } catch (error) { setKnowledgeStatus(error.message, true); }
+    } catch (error) {
+      progress.classList.add("error");
+      progressText.textContent = `上传失败：${error.message}`;
+      setKnowledgeStatus(error.message, true);
+    }
     finally {
       uploading = false; button.disabled = false;
       if (!reloading) { await loadDocuments(); render(); }
@@ -579,11 +736,16 @@
     csrfToken = null; sessionId = null; sessionScope = null; sessionType = "knowledge";
     legacyReady = false; webEnabled = false;
     currentKbId = null;
-    knowledgeBases = []; documents = []; history = []; messages.replaceChildren();
+    knowledgeBases = []; documents = []; sessionList = []; history = []; messages.replaceChildren();
     document.querySelector("#username").textContent = "";
     document.querySelector("#sessions").replaceChildren();
+    document.querySelector("#sessionSearch").value = "";
+    document.querySelector("#sessionFilter").value = "all";
+    document.querySelector("#sessionCount").textContent = "";
     document.querySelector("#documents").replaceChildren();
     document.querySelector("#knowledgeBase").replaceChildren(new Option("请选择知识库", ""));
+    document.querySelector("#uploadProgress").hidden = true;
+    renderKnowledgeOverview();
     setKnowledgeStatus("", false);
     showLoggedIn(false);
   });

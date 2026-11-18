@@ -25,7 +25,8 @@ class PersistentChatService:
         result = await self.rag_core.answer(rewritten)
         evidence = [{"rank": e.rank, "score": round(e.score, 4),
                      "source": str(e.source) if e.source is not None else None,
-                     "chunk_id": e.chunk_id, "content": e.content}
+                     "chunk_id": e.chunk_id, "content": e.content,
+                     "page_number": getattr(e, "page_number", None)}
                     for e in result.evidence_chunks]
         metadata = jsonable_encoder(result.metadata or {})
         self.repository.append_turn(

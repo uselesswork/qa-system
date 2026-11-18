@@ -62,6 +62,7 @@ class AnswerAwareAggregator(BaseAnswerAggregator):
                     content=r.chunk.content,
                     source=r.chunk.metadata.get("source"),
                     chunk_id=r.chunk.metadata.get("chunk_id"),
+                    page_number=r.chunk.metadata.get("page"),
                 )
             )
 
