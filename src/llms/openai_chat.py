@@ -39,12 +39,15 @@ class OpenAIChatLLM(BaseLLM):
         message = response.choices[0].message.content
 
         metadata = {
-                "model": self.model,
+                "model": getattr(response, "model", None) or self.model,
                 "elapsed_time": round(elapsed, 3),
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
         }
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = getattr(usage, key, None)
+                if value is not None:
+                    metadata[key] = value
         if self.temperature is not None:
             metadata["temperature"] = self.temperature
 
