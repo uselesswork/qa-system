@@ -24,7 +24,16 @@
 .\.venv\Scripts\python.exe eval\collect_predictions.py --retry-calls eval\predictions.calls.jsonl --hub-url http://127.0.0.1:18080 --hub-run-id <同一个运行的UUID>
 ```
 
-重试保留原 `requestId`。Hub 返回 201 计为新增；返回 409 时查询该运行的 `GET /api/runs/{runId}/usage`，只有同一 `requestId` 的模型、整数耗时、成对 token 和价格版本都一致，才计为已送达。找不到、内容冲突或查询失败均报错，原文件保留待人工核对后重试。其他失败也不会删除原文件。旧版含小数 `latencyMs` 的明细不会被悄悄改写或发送，需要先核对并转换为整数，同时保留原 `requestId`。当前只把调用归入手动指定的已有 Hub 运行，**尚未自动创建运行、导入评分报告或关联报告版本**。Hub 的价格和费用状态以其接口文档为准。
+重试保留原 `requestId`。Hub 返回 201 计为新增；返回 409 时查询该运行的 `GET /api/runs/{runId}/usage`，只有同一 `requestId` 的模型、整数耗时、成对 token 和价格版本都一致，才计为已送达。找不到、内容冲突或查询失败均报错，原文件保留待人工核对后重试。其他失败也不会删除原文件。旧版含小数 `latencyMs` 的明细不会被悄悄改写或发送，需要先核对并转换为整数，同时保留原 `requestId`。本节的 `--hub-run-id` 是手动指定已有运行的旧入口；报告发布与自动关联入口见下文。Hub 的价格和费用状态以其接口文档为准。
+
+第五阶段增加显式的报告与调用配对发布：`run_eval.py` 评分完成后可调用 Hub 导入现有格式报告，取得 Hub `runId`，再上传 `--calls-file` 中的调用。必须提供实际模型 ID；不要把运行标签当成模型 ID。默认评分仍不连接 Hub。失败后使用原报告与原调用文件执行 `publish_to_hub.py`，不重新调用模型或重新生成报告哈希：
+
+```powershell
+.\.venv\Scripts\python.exe eval\run_eval.py --predictions eval\predictions.jsonl --output eval\reports\run.report.json --run-label example --hub-url http://127.0.0.1:8080 --calls-file eval\predictions.calls.jsonl --model-id example-model
+.\.venv\Scripts\python.exe eval\publish_to_hub.py --report eval\reports\run.report.json --calls-file eval\predictions.calls.jsonl --hub-url http://127.0.0.1:8080 --model-id example-model
+```
+
+发布前需人工确认报告、预测与调用明细来自同一次采集。相同报告和相同调用重复发布会使用原 Hub 运行并去重；本轮只用已有五题报告和一条**合成调用**在一次性隔离 Hub/MySQL 验证，未运行真实模型。尚无后台自动调度或真实模型全链路验收。
 
 2026-11-20 用假 LLM 响应和 `httpx.MockTransport` 验证了小数耗时转整数、成对用量、409 一致与冲突、查询失败、同名文件保护及重试模式不采集；相关测试 **17 passed**，完整无密钥回归 **76 passed**。本轮未运行真实模型，也未对真实 Hub 服务做联调。
 
