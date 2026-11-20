@@ -12,6 +12,7 @@ data/uploads/
 data/qdrant/
 /celerybeat-schedule*
 eval/predictions.jsonl
+eval/*.calls.jsonl
 eval/reports/
 /.runtime/
 .env.compose

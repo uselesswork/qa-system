@@ -8,7 +8,9 @@
 .\.venv\Scripts\python.exe eval\collect_predictions.py --model gpt-6-luna
 ```
 
-采集时另写入 `eval/predictions.calls.jsonl`（或按 `--output` 推导的同目录 `*.calls.jsonl`；可用 `--calls-output` 指定）。每行对应一次**成功返回**的 LLM 调用，包含唯一 `requestId`、所属数据集 `caseId`、`modelId` 和本次调用 `latencyMs`；模型 ID 优先取供应商响应，响应缺失时回退到请求的模型 ID。仅当供应商在同一次响应中明确返回两项用量时，才同时写入 `inputTokens` / `outputTokens`；零也是有效数值，缺失时两项都省略。可选 `priceVersion` 仅在显式指定时写入。文件不保存问题、答案、Prompt、原文、密钥或异常请求。预测 JSONL 的原字段及评分脚本不变；`model_calls` 仍只是包装器调用次数，不能换算 token。旧基线没有调用明细，不回填 token。
+采集时另写入 `eval/predictions.calls.jsonl`（或按 `--output` 推导的同目录 `*.calls.jsonl`；可用 `--calls-output` 指定）。每行对应一次**成功返回**的 LLM 调用，包含唯一 `requestId`、所属数据集 `caseId`、`modelId` 和本次调用 `latencyMs`；模型 ID 优先取供应商响应，响应缺失时回退到请求的模型 ID。`latencyMs` 是非负整数毫秒，四舍五入到最近整数；预测文件的逐题 `latency_ms` 仍保留原来的小数毫秒。仅当供应商在同一次响应中明确返回两项用量时，才同时写入 `inputTokens` / `outputTokens`；零也是有效数值，缺失时两项都省略。可选 `priceVersion` 仅在显式指定时写入。文件不保存问题、答案、Prompt、原文、密钥或异常请求。预测 JSONL 的原字段及评分脚本不变；`model_calls` 仍只是包装器调用次数，不能换算 token。旧基线没有调用明细，不回填 token。
+
+已有同名调用明细时，采集会在读取配置或调用模型前停止，避免覆盖未上报的 `requestId`。要继续上报，请直接使用原文件运行下述 `--retry-calls`；要采集新一轮，请指定新的 `--output` 或 `--calls-output`。默认生成的 `eval/*.calls.jsonl` 已被 Git 忽略，`eval/baselines/` 与测试文件不在该忽略范围；自定义到其他目录的文件应在提交前自行检查。
 
 若 Hub 已有运行，可显式上报。`--hub-run-id` 必须是该 Hub 已存在的运行 UUID；脚本先完成本地采集和逐条落盘，再检查运行并向 `POST /api/runs/{runId}/calls` 发送精简字段。默认不连接 Hub，未传 `--price-version` 时 Hub 会按缺少价格处理。
 
@@ -22,7 +24,9 @@
 .\.venv\Scripts\python.exe eval\collect_predictions.py --retry-calls eval\predictions.calls.jsonl --hub-url http://127.0.0.1:18080 --hub-run-id <同一个运行的UUID>
 ```
 
-重试保留原 `requestId`。Hub 返回 201 计为新增，409 计为该运行下已存在，不重复创建计费记录；其他状态导致命令报错，文件不删除。当前只把调用归入手动指定的已有 Hub 运行，**尚未自动创建运行、导入评分报告或关联报告版本**。Hub 的价格和费用状态以其接口文档为准。
+重试保留原 `requestId`。Hub 返回 201 计为新增；返回 409 时查询该运行的 `GET /api/runs/{runId}/usage`，只有同一 `requestId` 的模型、整数耗时、成对 token 和价格版本都一致，才计为已送达。找不到、内容冲突或查询失败均报错，原文件保留待人工核对后重试。其他失败也不会删除原文件。旧版含小数 `latencyMs` 的明细不会被悄悄改写或发送，需要先核对并转换为整数，同时保留原 `requestId`。当前只把调用归入手动指定的已有 Hub 运行，**尚未自动创建运行、导入评分报告或关联报告版本**。Hub 的价格和费用状态以其接口文档为准。
+
+2026-11-20 用假 LLM 响应和 `httpx.MockTransport` 验证了小数耗时转整数、成对用量、409 一致与冲突、查询失败、同名文件保护及重试模式不采集；相关测试 **17 passed**，完整无密钥回归 **76 passed**。本轮未运行真实模型，也未对真实 Hub 服务做联调。
 
 评测脚本读取**同一次系统运行**产生的 `predictions.jsonl`，每条记录格式：
 

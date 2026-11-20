@@ -48,7 +48,7 @@ class CountingLLM:
         metadata = answer.metadata or {}
         record = {"requestId": str(uuid4()), "caseId": self.case_id,
                   "modelId": metadata.get("model") or self.model,
-                  "latencyMs": round((time.perf_counter() - started) * 1000, 3)}
+                  "latencyMs": max(0, int((time.perf_counter() - started) * 1000 + 0.5))}
         input_tokens = metadata.get("prompt_tokens")
         output_tokens = metadata.get("completion_tokens")
         if all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10**9
@@ -65,9 +65,42 @@ def calls_path_for(output: Path) -> Path:
     return output.with_name(f"{output.stem}.calls.jsonl")
 
 
+def open_new_calls_file(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        return path.open("x", encoding="utf-8")
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"调用明细已存在：{path}。为防止覆盖尚未上报的 requestId，"
+            "请用 --retry-calls 原文件重试，或为新采集指定新的 --output / --calls-output。"
+        ) from exc
+
+
+def verify_duplicate(client: httpx.Client, run_url: str, payload: dict,
+                     calls_path: Path, number: int) -> None:
+    reason = f"Hub 第 {number} 行返回 409，无法确认同一调用；本地明细仍在 {calls_path}，请核对后重试。"
+    try:
+        response = client.get(f"{run_url}/usage")
+        if response.status_code != 200:
+            raise RuntimeError(f"{reason} usage 查询返回 HTTP {response.status_code}。")
+        calls = response.json().get("calls")
+    except (httpx.RequestError, ValueError, AttributeError) as exc:
+        raise RuntimeError(f"{reason} usage 查询失败。") from exc
+    if not isinstance(calls, list):
+        raise RuntimeError(f"{reason} usage 响应缺少 calls 列表。")
+    matches = [call for call in calls if isinstance(call, dict)
+               and call.get("requestId") == payload["requestId"]]
+    if len(matches) != 1:
+        raise RuntimeError(f"{reason} 未找到唯一的 requestId。")
+    saved = matches[0]
+    fields = ("modelId", "latencyMs", "inputTokens", "outputTokens", "priceVersion")
+    if any(saved.get(key) != payload.get(key) for key in fields):
+        raise RuntimeError(f"{reason} 已存在记录的字段与本地文件冲突。")
+
+
 def upload_calls(calls_path: Path, hub_url: str, hub_run_id: str,
                  transport: httpx.BaseTransport | None = None) -> tuple[int, int]:
-    """重放本地明细；409 表示同一 run/requestId 已存在，不重复创建。"""
+    """重放本地明细；409 仅在远端内容与本地完全一致时视为已送达。"""
     run_url = f"{hub_url.rstrip('/')}/api/runs/{UUID(hub_run_id)}"
     created = duplicates = 0
     with httpx.Client(transport=transport, trust_env=False, timeout=10) as client:
@@ -83,6 +116,8 @@ def upload_calls(calls_path: Path, hub_url: str, hub_run_id: str,
             record = json.loads(line)
             payload = {key: record[key] for key in ("requestId", "modelId", "latencyMs",
                        "inputTokens", "outputTokens", "priceVersion") if key in record}
+            if type(payload.get("latencyMs")) is not int or payload["latencyMs"] < 0:
+                raise RuntimeError(f"调用明细第 {number} 行的 latencyMs 须为非负整数；未发送到 Hub，原文件仍在 {calls_path}。")
             if not ("inputTokens" in payload and "outputTokens" in payload):
                 payload.pop("inputTokens", None)
                 payload.pop("outputTokens", None)
@@ -93,6 +128,7 @@ def upload_calls(calls_path: Path, hub_url: str, hub_run_id: str,
             if response.status_code == 201:
                 created += 1
             elif response.status_code == 409:
+                verify_duplicate(client, run_url, payload, calls_path, number)
                 duplicates += 1
             else:
                 raise RuntimeError(f"Hub 上报第 {number} 行返回 HTTP {response.status_code}；本地调用明细仍在 {calls_path}。可用 --retry-calls 重试。")
@@ -117,8 +153,10 @@ async def collect(dataset: Path, output: Path, model: str, corpus: Path | None =
     if bool(hub_url) != bool(hub_run_id):
         raise ValueError("--hub-url 和 --hub-run-id 必须同时提供")
     calls_output = calls_output or calls_path_for(output)
-    if calls_output == output:
+    if calls_output.resolve() == output.resolve():
         raise ValueError("调用明细文件不能与预测文件同名")
+    if calls_output.exists():
+        raise FileExistsError(f"调用明细已存在：{calls_output}。请用 --retry-calls 原文件重试，或指定新的输出路径。")
     load_dotenv(ROOT / ".env")
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("缺少 OPENAI_API_KEY")
@@ -148,8 +186,7 @@ async def collect(dataset: Path, output: Path, model: str, corpus: Path | None =
         else:
             raise ValueError("vector_backend 只能是 memory 或 qdrant-local")
         store.add(await embedder.embed(chunks))
-        calls_output.parent.mkdir(parents=True, exist_ok=True)
-        with calls_output.open("w", encoding="utf-8") as call_handle:
+        with open_new_calls_file(calls_output) as call_handle:
             def save_call(record):
                 call_handle.write(json.dumps(record, ensure_ascii=False) + "\n")
                 call_handle.flush()
