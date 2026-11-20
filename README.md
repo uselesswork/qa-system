@@ -141,7 +141,9 @@
 
 LangSmith 是可选追踪：在 `.env` 设置 `LANGSMITH_TRACING=true`、`LANGSMITH_API_KEY`、`LANGSMITH_PROJECT`，重启 Web 和 Celery worker 后，新请求会在指定目标下出现。知识库问答、联网搜索、已保存网页回答追问及文档索引有独立追踪；默认 OpenAI 聊天和联网搜索客户端也记录模型调用。项目使用原生 OpenAI SDK，单独填写 LangSmith 环境变量不会自动追踪这些调用。
 
-当前 LangSmith 工作区按 Agent 和环境组织追踪。使用本机已安装的 SDK 时，`LANGSMITH_PROJECT` 应填所选 Agent 环境的 `tracer_session_name`，名称区分大小写；截图中的 Agent `LLM` 的 Production 环境对应 `LLM`，小写 `llm` 是另一个 Agent。不要单独设置 `LANGSMITH_AGENT_ENVIRONMENT` 代替目标名称。运行 `.\.venv\Scripts\python.exe -m scripts.check_langsmith --show-agents` 可核对 Agent 与环境映射；`--show-runs` 只读查看目标下最近的追踪名称和时间；`--smoke-trace` 会写入一条不含业务数据的诊断追踪并读取验证。网页上到左侧 **Tracing**，选择相同 Agent 和 Production 查看逐条记录；Monitoring 图表可能稍晚汇总。旧目标中的追踪不会自动搬到新目标。
+当前 LangSmith 追踪目标名称已改为 `qa-system`，示例配置中的 `LANGSMITH_PROJECT=qa-system` 与之对应。使用本机已安装的 SDK 时，该值仍应以所选 Agent 环境实际显示的 `tracer_session_name` 为准，名称区分大小写。不要单独设置 `LANGSMITH_AGENT_ENVIRONMENT` 代替目标名称。运行 `.\.venv\Scripts\python.exe -m scripts.check_langsmith --show-agents` 可核对 Agent 与环境映射；`--show-runs` 只读查看目标下最近的追踪名称和时间；`--smoke-trace` 会写入一条不含业务数据的诊断追踪并读取验证。网页上到左侧 **Tracing**，选择相同 Agent 和 Production 查看逐条记录；Monitoring 图表可能稍晚汇总。旧目标中的追踪不会自动搬到新目标。
+
+本机 `langsmith 0.6.2` 在导入公开的 `langsmith.wrappers` 时，会由 SDK 自身导入已弃用的 `_openai_agents` 模块并发出 `DeprecationWarning`。项目使用的是公开的 `wrap_openai` 接口，没有直接导入该弃用模块；这条警告与追踪目标改名无关，也不表示追踪写入失败。升级 SDK 前应单独核对兼容性与追踪结果，不把屏蔽警告当成修复。
 
 ## 问答接口
 
