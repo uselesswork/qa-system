@@ -76,7 +76,33 @@
 
 第十一阶段增加注册登录、账号归属、Cookie/CSRF、MySQL 会话与消息，并补齐网页知识库创建、上传、状态、重试和按库续问。旧知识库保留未归属且不可由普通账号访问；新会话只检索所选知识库的 `ready` 文档。阶段结束时 30 个无密钥测试通过，本机 MySQL 已升到 `0003_chat_knowledge_scope`；2026-11-17 在浏览器补验收注册、退出登录、建库上传、真实问答、连续追问、刷新与重新登录恢复、同账号多库隔离，以及测试文档删除后保留历史回答。[阶段说明](docs/第十一阶段-用户权限与会话持久化.md)
 
+## Docker 启动（完整容器栈）
+
+项目根目录的 `compose.yaml` 可一次启动 Web、MySQL、Redis、Qdrant、Celery worker、beat，并在 Web 启动前自动执行数据库迁移。先启动 Docker Desktop，在项目根目录的 PowerShell 中准备仅本机使用的配置文件；已有 `.env.compose` 时不要覆盖：
+
+```powershell
+if (-not (Test-Path .env.compose)) { Copy-Item .env.compose.example .env.compose }
+```
+
+编辑已被 Git 忽略的 `.env.compose`，填写真实 `OPENAI_API_KEY`、`OPENAI_BASE_URL`，并分别替换 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 两个示例密码。若本机 `8090` 已被 `run.cmd` 占用，把 `WEB_HOST_PORT` 改为 `8091`。确认配置后启动并查看状态：
+
+```powershell
+docker compose --env-file .env.compose config --quiet
+docker compose --env-file .env.compose up -d --build
+docker compose --env-file .env.compose ps
+```
+
+等待 `migrate` 显示 `Exited (0)`，MySQL、Redis、Web 显示 `healthy`，再打开 `http://127.0.0.1:8090/`（改过 `WEB_HOST_PORT` 时用相应端口）。可运行 `docker compose --env-file .env.compose exec -T web python -m scripts.smoke_services` 做不调用模型的存储冒烟检查。排查时用 `docker compose --env-file .env.compose logs --tail=100 web worker beat` 查看日志；停止用 `docker compose --env-file .env.compose down`，**不要加 `-v`**，否则会删除命名卷中的数据。
+
+这套完整容器栈使用独立的 MySQL、Qdrant、Redis 和上传文件命名卷，**不会自动读取下文 `run.cmd` 所用的本机 MySQL、`.env` 或旧向量数据**。首次配置、备份恢复和故障处理详见[运行与部署](docs/运行与部署.md)。
+
 ## 本地运行
+
+### 2026-11-19 本机复核
+
+本机已同步到第十七阶段代码，MySQL 迁移为 `0005_ingestion_tasks`。Docker 引擎、Redis/Qdrant 容器、Web、Celery worker 和 beat 均已启动；首页返回 HTTP 200。`scripts.smoke_services` 的 MySQL、Redis、Qdrant 无密钥冒烟检查通过，Celery worker 的 `inspect ping` 返回 `pong`。本机 Docker Redis 映射到 `16379`，应用仍使用 `.env` 指向的本机 `6379` Redis；两者不要误认为同一个实例。无需改动 `.env` 或旧 `data/qdrant/`。
+
+无密钥测试在测试进程中暂时清空 `REDIS_URL` 与 `QDRANT_URL` 后为 **64 passed**；直接带异步 `.env` 运行时，3 个旧同步接口测试预期 201、实际 202。真实模型问答、登录后的上传/检索和浏览器完整流程尚未在本机复验，不能据此宣称端到端通过。
 
 1. 在项目根目录创建虚拟环境并安装当前 Web 运行所需依赖：
 
